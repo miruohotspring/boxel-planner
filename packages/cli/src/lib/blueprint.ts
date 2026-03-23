@@ -35,6 +35,10 @@ export interface PlacementResult {
   stats: PlacementStats;
 }
 
+export interface RepeatedPlacementResult extends PlacementResult {
+  placements: number;
+}
+
 export interface RecenterResult {
   blueprint: Blueprint;
   offset: { x: number; y: number; z: number };
@@ -329,6 +333,54 @@ export function placeBlueprintIntoTarget(
       collisions,
       skipped,
     },
+  };
+}
+
+export function placeBlueprintRepeatedly(
+  target: Blueprint,
+  source: Blueprint,
+  opts: {
+    at: { x: number; y: number; z: number };
+    step: { x: number; y: number; z: number };
+    repeat: number;
+    include: PlacementInclude;
+    collision: PlacementCollisionMode;
+    mirror?: PlacementMirrorAxis;
+    rotateY?: RotationY;
+  }
+): RepeatedPlacementResult {
+  let current = target;
+  const totals: PlacementStats = {
+    placedStructure: 0,
+    placedScaffold: 0,
+    collisions: 0,
+    skipped: 0,
+  };
+
+  for (let i = 0; i < opts.repeat; i++) {
+    const result = placeBlueprintIntoTarget(current, source, {
+      at: {
+        x: opts.at.x + opts.step.x * i,
+        y: opts.at.y + opts.step.y * i,
+        z: opts.at.z + opts.step.z * i,
+      },
+      include: opts.include,
+      collision: opts.collision,
+      ...(opts.rotateY !== undefined ? { rotateY: opts.rotateY } : {}),
+      ...(opts.mirror !== undefined ? { mirror: opts.mirror } : {}),
+    });
+
+    current = result.blueprint;
+    totals.placedStructure += result.stats.placedStructure;
+    totals.placedScaffold += result.stats.placedScaffold;
+    totals.collisions += result.stats.collisions;
+    totals.skipped += result.stats.skipped;
+  }
+
+  return {
+    blueprint: current,
+    stats: totals,
+    placements: opts.repeat,
   };
 }
 

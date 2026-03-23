@@ -19,6 +19,15 @@ LLM（Claude / Codex など）が操作できる CLI と、設計図をグラフ
 
 ---
 
+## LLM Docs
+
+- フルガイド: [docs/llm-guide.md](docs/llm-guide.md)
+- 入口ルータ: [docs/llm-guide/README.md](docs/llm-guide/README.md)
+- 建築タイプ別: [docs/llm-guide/by-building-type.md](docs/llm-guide/by-building-type.md)
+- 構造別: [docs/llm-guide/by-structure.md](docs/llm-guide/by-structure.md)
+
+---
+
 ## 設計図ファイル形式 `.boxel.json`
 
 ### 概念
@@ -147,6 +156,7 @@ boxel mirror <file> \
 boxel place <file> \
   --source <part.boxel.json> \
   --x <n> --y <n> --z <n> \
+  [--repeat <n>] [--step-x <n>] [--step-y <n>] [--step-z <n>] \
   [--collision <ours|theirs|error>] \
   [--rotate-y <0|90|180|270>] [--mirror <x|z>]
 
@@ -158,6 +168,28 @@ boxel scaffold generate <file> [--margin <n>]
 
 # 足場をクリア
 boxel scaffold clear <file>
+```
+
+#### 曲線・曲面プリミティブ
+
+```bash
+# Y平面に円を描く
+boxel circle <file> --cx <n> --cz <n> --r <n> --y <n> --color <#RRGGBB> [--filled]
+
+# 円柱を作る
+boxel cylinder <file> --cx <n> --cz <n> --r <n> --y1 <n> --y2 <n> --color <#RRGGBB> [--filled]
+
+# 尖塔を段積みで作る
+boxel spire <file> --cx <n> --cz <n> --y <n> --radii <4,3,2,1> --color <#RRGGBB> [--cap-color <#RRGGBB>]
+
+# 球やドームを作る
+boxel sphere <file> --cx <n> --cy <n> --cz <n> --r <n> --color <#RRGGBB> [--filled]
+
+# 楕円を描く
+boxel ellipse <file> --cx <n> --cz <n> --rx <n> --rz <n> --y <n> --color <#RRGGBB> [--filled]
+
+# 数式曲面を生成する
+boxel surface <file> --type <torus|paraboloid|wave|gaussian|saddle> --color <#RRGGBB> ...
 ```
 
 #### 出力

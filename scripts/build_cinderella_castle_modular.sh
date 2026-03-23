@@ -52,14 +52,16 @@ spire() {
   local start_y="$4"
   shift 4
 
-  local y="$start_y"
+  local radii_csv=""
   local r
   for r in "$@"; do
-    json circle "$file" --cx "$cx" --cz "$cz" --r "$r" --y "$y" --color "$ROOF_BLUE" --filled
-    y=$((y + 1))
+    if [[ -n "$radii_csv" ]]; then
+      radii_csv+=","
+    fi
+    radii_csv+="$r"
   done
 
-  json add "$file" --x "$cx" --y "$y" --z "$cz" --color "$GOLD"
+  json spire "$file" --cx "$cx" --cz "$cz" --y "$start_y" --radii "$radii_csv" --color "$ROOF_BLUE" --cap-color "$GOLD"
 }
 
 build_center_keep() {
@@ -80,7 +82,7 @@ build_center_keep() {
   roof_box "$file" -8 -6 8 8 12 3 "$ROOF_DARK"
   roof_box "$file" -6 -4 6 6 22 3 "$ROOF_DARK"
 
-  spire "$file" 0 1 39 4 3 3 2 2 1 1
+  spire "$file" 0 1 39 4 3 3 2 2
   spire "$file" -6 -7 22 3 3 2 2 1 1
   spire "$file" 6 -7 22 3 3 2 2 1 1
   spire "$file" -7 7 19 2 2 1 1

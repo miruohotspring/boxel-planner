@@ -25,14 +25,16 @@ spire() {
   local start_y="$3"
   shift 3
 
-  local y="$start_y"
+  local radii_csv=""
   local r
   for r in "$@"; do
-    run circle "$FILE" --cx "$cx" --cz "$cz" --r "$r" --y "$y" --color "$ROOF_BLUE" --filled
-    y=$((y + 1))
+    if [[ -n "$radii_csv" ]]; then
+      radii_csv+=","
+    fi
+    radii_csv+="$r"
   done
 
-  run add "$FILE" --x "$cx" --y "$y" --z "$cz" --color "$GOLD"
+  run spire "$FILE" --cx "$cx" --cz "$cz" --y "$start_y" --radii "$radii_csv" --color "$ROOF_BLUE" --cap-color "$GOLD"
 }
 
 roof_box() {

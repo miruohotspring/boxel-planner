@@ -2,6 +2,14 @@
 
 このドキュメントは Claude・Codex などの LLM が `boxel` CLI を操作して `.boxel.json` 設計図を作成・編集するためのリファレンスです。
 
+短い導線が欲しい場合は、用途別の入口ファイルも使えます。
+
+- 建築タイプから入る: [docs/llm-guide/by-building-type.md](./llm-guide/by-building-type.md)
+- 構造パターンから入る: [docs/llm-guide/by-structure.md](./llm-guide/by-structure.md)
+- プリミティブ早見表: [docs/llm-guide/primitives.md](./llm-guide/primitives.md)
+- 部品合成と対称配置: [docs/llm-guide/composition.md](./llm-guide/composition.md)
+- 失敗時の見直し: [docs/llm-guide/troubleshooting.md](./llm-guide/troubleshooting.md)
+
 ---
 
 ## 1. セットアップ
@@ -158,6 +166,13 @@ boxel place castle.boxel.json \
   --rotate-y 180 --mirror x \
   --collision theirs
 
+# 角塔を 4 本並べる
+boxel place castle.boxel.json \
+  --source corner_tower.boxel.json \
+  --x -18 --y 0 --z -18 \
+  --repeat 2 --step-x 36 \
+  --collision error
+
 # 左右対称の翼棟を片側から複製
 boxel mirror castle.boxel.json \
   --x1 4 --y1 0 --z1 10 \
@@ -179,6 +194,7 @@ boxel copy castle.boxel.json \
 `mirror --origin` は整数だけでなく `.5` も使えます。たとえば `--axis x --origin 24.5` は X=24 と X=25 の間を鏡面にします。
 `place` は source 側のローカル原点 `(0,0,0)` を target 側の `(--x, --y, --z)` に合わせて配置します。
 `place` の変換順は `mirror -> rotate-y -> translate` です。
+`place --repeat` は開始位置を含む配置回数です。`repeat > 1` のときは少なくとも 1 つの `--step-x/--step-y/--step-z` を指定してください。
 
 既存ファイルをこの規約へ寄せたいときは `recenter` を使います。
 
@@ -284,7 +300,7 @@ boxel info myhouse.boxel.json --json
 
 城や駅舎のような大きな建築では、次の順で進めると崩れにくくなります。
 
-1. `fill` / `cylinder` でシルエットの主ボリュームだけ作る
+1. `fill` / `cylinder` / `spire` でシルエットの主ボリュームだけ作る
 2. `ortho --y-min 1` で TOP / FRONT / SIDE の見え方を確認する
 3. 大きい部品は別ファイルで作って `place` で合成する
 4. 片側だけ細部を作り、`mirror` で反対側へ複製する
@@ -603,6 +619,13 @@ boxel place castle.boxel.json \
   --source side_tower.boxel.json \
   --x 38 --y 0 --z 20 \
   --collision ours --json
+
+# 同じ塔を等間隔に 3 本置く
+boxel place castle.boxel.json \
+  --source buttress.boxel.json \
+  --x -12 --y 0 --z 8 \
+  --repeat 3 --step-x 12 \
+  --collision error --json
 ```
 
 `--collision` の意味:
@@ -613,6 +636,7 @@ boxel place castle.boxel.json \
 `--include structure|scaffold|all` で、source のどのレイヤーを持ってくるか選べます。既定値は `all` です。
 `--rotate-y 90|180|270` で source をローカル原点まわりに回転できます。`90` は `(x,z) -> (-z,x)` です。
 `--mirror x|z` は source をローカル原点に対して反転します。
+`--repeat <n>` は開始位置を含む総配置回数です。反復間隔は `--step-x/--step-y/--step-z` で指定します。
 
 ### 斜め屋根の作り方
 
@@ -757,7 +781,33 @@ boxel ellipse plaza.boxel.json --cx 8 --cz 8 --rx 7 --rz 5 --y 0 --color "#D2B48
 
 ---
 
-### 9.5 使用例：円形の塔
+### 9.5 `spire` — 段積みの尖塔 / 屋根
+
+`spire` は各層の半径を下から順に積みます。城の尖塔、塔屋根、段付きの青屋根を作るときに使います。
+
+```bash
+# 半径 4,3,3,2,2,1 の尖塔を積み、最後に金色の頂点を置く
+boxel spire castle.boxel.json \
+  --cx 0 --cz 0 --y 20 \
+  --radii 4,3,3,2,2,1 \
+  --color "#3E5FA8" \
+  --cap-color "#D8B343"
+```
+
+| オプション | 説明 |
+|---|---|
+| `--cx <n>` | 中心X座標（必須） |
+| `--cz <n>` | 中心Z座標（必須） |
+| `--y <n>` | 開始Y座標（必須） |
+| `--radii <list>` | 各層の半径をカンマ区切りで指定（必須） |
+| `--color <#RRGGBB>` | 本体色（必須） |
+| `--cap-color <#RRGGBB>` | 先端ブロック色（任意） |
+| `--layer <structure\|scaffold>` | 対象レイヤー（デフォルト: structure） |
+| `--json` | JSON形式出力 |
+
+---
+
+### 9.6 使用例：円形の塔
 
 ```bash
 # 1. ファイル初期化
@@ -776,7 +826,7 @@ boxel circle tower.boxel.json --cx 5 --cz 5 --r 4 --y 11 --color "#888888" --fil
 boxel validate tower.boxel.json --json
 ```
 
-### 9.6 使用例：ドーム屋根
+### 9.7 使用例：ドーム屋根
 
 ```bash
 # 1. 既存の建物に続けてドームを追加
@@ -792,7 +842,7 @@ boxel render building.boxel.json --y 13
 boxel validate building.boxel.json --json
 ```
 
-### 9.7 使用例：楕円形の池
+### 9.8 使用例：楕円形の池
 
 ```bash
 # 1. ファイル初期化
@@ -808,7 +858,7 @@ boxel render pond.boxel.json --y 0
 boxel validate pond.boxel.json --json
 ```
 
-### 9.8 `surface` — パラメトリック曲面
+### 9.9 `surface` — パラメトリック曲面
 
 パラメトリック曲面 S(u,v) をボクセル座標列に変換して書き込みます。
 
@@ -915,7 +965,7 @@ boxel surface saddle.json --type saddle --cx 5 --cy 5 --cz 5 --a 0.3 --b 0.3 --r
 
 ---
 
-### 9.9 render で確認する手順
+### 9.10 render で確認する手順
 
 曲線コマンド実行後は `render` で形状を確認してください。
 

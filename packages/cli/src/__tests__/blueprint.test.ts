@@ -8,6 +8,7 @@ import {
   mirrorBlock,
   normalizeRange,
   placeBlueprintIntoTarget,
+  placeBlueprintRepeatedly,
   recenterBlueprint,
   rotateBlockY,
   summarizeBounds,
@@ -272,6 +273,90 @@ describe("lib/blueprint", () => {
       { x: 10, y: 0, z: 12, color: "#AAAAAA" },
       { x: 9, y: 0, z: 12, color: "#BBBBBB" },
     ]);
+  });
+
+  it("placeBlueprintRepeatedly: step ごとに順に配置できる", () => {
+    const result = placeBlueprintRepeatedly(
+      {
+        version: "1.0",
+        name: "target",
+        bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        structure: [],
+        scaffold: [],
+      },
+      {
+        version: "1.0",
+        name: "source",
+        bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 0, z: 0 } },
+        structure: [
+          { x: 0, y: 0, z: 0, color: "#AAAAAA" },
+          { x: 1, y: 0, z: 0, color: "#BBBBBB" },
+        ],
+        scaffold: [],
+      },
+      {
+        at: { x: 10, y: 2, z: 5 },
+        step: { x: 4, y: 0, z: -1 },
+        repeat: 3,
+        include: "structure",
+        collision: "error",
+      }
+    );
+
+    expect(result.blueprint.structure).toEqual([
+      { x: 10, y: 2, z: 5, color: "#AAAAAA" },
+      { x: 11, y: 2, z: 5, color: "#BBBBBB" },
+      { x: 14, y: 2, z: 4, color: "#AAAAAA" },
+      { x: 15, y: 2, z: 4, color: "#BBBBBB" },
+      { x: 18, y: 2, z: 3, color: "#AAAAAA" },
+      { x: 19, y: 2, z: 3, color: "#BBBBBB" },
+    ]);
+    expect(result.stats).toEqual({
+      placedStructure: 6,
+      placedScaffold: 0,
+      collisions: 0,
+      skipped: 0,
+    });
+    expect(result.placements).toBe(3);
+  });
+
+  it("placeBlueprintRepeatedly: collision=ours なら後続配置でも既存を守る", () => {
+    const result = placeBlueprintRepeatedly(
+      {
+        version: "1.0",
+        name: "target",
+        bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        structure: [{ x: 2, y: 0, z: 0, color: "#111111" }],
+        scaffold: [],
+      },
+      {
+        version: "1.0",
+        name: "source",
+        bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        structure: [{ x: 0, y: 0, z: 0, color: "#AAAAAA" }],
+        scaffold: [],
+      },
+      {
+        at: { x: 0, y: 0, z: 0 },
+        step: { x: 1, y: 0, z: 0 },
+        repeat: 4,
+        include: "structure",
+        collision: "ours",
+      }
+    );
+
+    expect(result.blueprint.structure).toEqual([
+      { x: 2, y: 0, z: 0, color: "#111111" },
+      { x: 0, y: 0, z: 0, color: "#AAAAAA" },
+      { x: 1, y: 0, z: 0, color: "#AAAAAA" },
+      { x: 3, y: 0, z: 0, color: "#AAAAAA" },
+    ]);
+    expect(result.stats).toEqual({
+      placedStructure: 3,
+      placedScaffold: 0,
+      collisions: 1,
+      skipped: 1,
+    });
   });
 
   it("recenterBlueprint: XZ 中心と底面 Y を揃える", () => {

@@ -155,6 +155,24 @@ function generateEllipseBlocks(
   return blocks;
 }
 
+function generateSpireBlocks(
+  cx: number,
+  cz: number,
+  y: number,
+  radii: number[],
+  color: string,
+  capColor?: string
+): Block[] {
+  const blocks: Block[] = [];
+  for (const [index, radius] of radii.entries()) {
+    blocks.push(...generateCircleBlocks(cx, cz, radius, y + index, color, true));
+  }
+  if (capColor) {
+    blocks.push({ x: cx, y: y + radii.length, z: cz, color: capColor });
+  }
+  return blocks;
+}
+
 // ============================================================
 // circle テスト
 // ============================================================
@@ -448,6 +466,62 @@ describe("ellipse command logic", () => {
     const ellipse = generateEllipseBlocks(0, 0, 4, 4, 0, COLOR, true);
     // 同じ半径の円と楕円は似たブロック数（±5ブロック以内）
     expect(Math.abs(circle.length - ellipse.length)).toBeLessThanOrEqual(10);
+  });
+});
+
+// ============================================================
+// spire テスト
+// ============================================================
+
+describe("spire command logic", () => {
+  const COLOR = "#3E5FA8";
+  const CAP_COLOR = "#D8B343";
+
+  it("半径列ぶんの層が順に積まれる", () => {
+    const blocks = generateSpireBlocks(0, 0, 10, [4, 3, 3, 2, 1], COLOR);
+    const ys = new Set(blocks.map((block) => block.y));
+    expect(ys).toEqual(new Set([10, 11, 12, 13, 14]));
+  });
+
+  it("下層ほど上層よりブロック数が多い", () => {
+    const baseLayer = generateSpireBlocks(0, 0, 0, [4], COLOR);
+    const topLayer = generateSpireBlocks(0, 0, 0, [1], COLOR);
+    expect(baseLayer.length).toBeGreaterThan(topLayer.length);
+  });
+
+  it("cap-color 指定時に頂点ブロックが追加される", () => {
+    const blocks = generateSpireBlocks(2, -1, 5, [3, 2, 1], COLOR, CAP_COLOR);
+    const top = blocks.find((block) => block.x === 2 && block.y === 8 && block.z === -1);
+    expect(top?.color).toBe(CAP_COLOR);
+  });
+
+  it("重複座標が生成されない", () => {
+    const blocks = generateSpireBlocks(0, 0, 0, [3, 3, 2, 2, 1], COLOR, CAP_COLOR);
+    const keys = new Set(blocks.map((block) => positionKey(block)));
+    expect(keys.size).toBe(blocks.length);
+  });
+
+  it("ファイルに書き込まれ bounds が更新される", () => {
+    const fp = tmpFile("spire.boxel.json");
+    const bp = makeBlueprint();
+    writeFixture(fp, bp);
+
+    const blocks = generateSpireBlocks(0, 0, 4, [3, 2, 1], COLOR, CAP_COLOR);
+    const posMap = new Map<string, Block>();
+    for (const block of blocks) {
+      posMap.set(positionKey(block), block);
+    }
+    const newBlocks = Array.from(posMap.values());
+    const updated: Blueprint = {
+      ...bp,
+      structure: newBlocks,
+      bounds: computeBounds(newBlocks) ?? bp.bounds,
+    };
+    writeBlueprint(fp, updated);
+
+    const result = readBlueprint(fp);
+    expect(result.bounds.min).toEqual({ x: -3, y: 4, z: -3 });
+    expect(result.bounds.max).toEqual({ x: 3, y: 7, z: 3 });
   });
 });
 

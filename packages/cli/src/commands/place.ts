@@ -7,6 +7,7 @@ import { readBlueprint, writeBlueprint } from "../lib/file.js";
 import { printData, printError, warnNegativeCoords, type OutputOptions } from "../lib/output.js";
 import {
   placeBlueprintIntoTarget,
+  placeBlueprintRepeatedly,
   type PlacementCollisionMode,
   type PlacementInclude,
   type PlacementMirrorAxis,
@@ -21,6 +22,10 @@ export function registerPlace(program: Command): void {
     .requiredOption("--x <n>", "source の原点を置く target 側 X座標", Number)
     .requiredOption("--y <n>", "source の原点を置く target 側 Y座標", Number)
     .requiredOption("--z <n>", "source の原点を置く target 側 Z座標", Number)
+    .option("--repeat <n>", "配置回数（開始位置を含む）", Number, 1)
+    .option("--step-x <n>", "反復時の X 間隔", Number, 0)
+    .option("--step-y <n>", "反復時の Y 間隔", Number, 0)
+    .option("--step-z <n>", "反復時の Z 間隔", Number, 0)
     .option("--include <include>", "配置対象 (structure / scaffold / all)", "all")
     .option("--collision <mode>", "衝突時の解決 (ours / theirs / error)", "error")
     .option("--rotate-y <deg>", "Y軸回転 (0 / 90 / 180 / 270)", Number, 0)
@@ -34,6 +39,10 @@ export function registerPlace(program: Command): void {
           x: number;
           y: number;
           z: number;
+          repeat: number;
+          stepX: number;
+          stepY: number;
+          stepZ: number;
           include: string;
           collision: string;
           rotateY: number;
@@ -42,6 +51,22 @@ export function registerPlace(program: Command): void {
         }
       ) => {
         const outputOpts: OutputOptions = { json: opts.json };
+
+        if (!Number.isInteger(opts.repeat) || opts.repeat < 1) {
+          printError(`Invalid repeat: "${opts.repeat}". Must be an integer >= 1.`, outputOpts);
+        }
+
+        if (
+          opts.repeat > 1 &&
+          opts.stepX === 0 &&
+          opts.stepY === 0 &&
+          opts.stepZ === 0
+        ) {
+          printError(
+            "repeat > 1 requires at least one of --step-x, --step-y, or --step-z to be non-zero.",
+            outputOpts
+          );
+        }
 
         if (
           opts.include !== "structure" &&
@@ -92,15 +117,27 @@ export function registerPlace(program: Command): void {
 
         let result;
         try {
-          result = placeBlueprintIntoTarget(target, source, {
-            at: { x: opts.x, y: opts.y, z: opts.z },
-            include: opts.include as PlacementInclude,
-            collision: opts.collision as PlacementCollisionMode,
-            rotateY: opts.rotateY as RotationY,
-            ...(opts.mirror !== undefined
-              ? { mirror: opts.mirror as PlacementMirrorAxis }
-              : {}),
-          });
+          result = opts.repeat === 1
+            ? placeBlueprintIntoTarget(target, source, {
+              at: { x: opts.x, y: opts.y, z: opts.z },
+              include: opts.include as PlacementInclude,
+              collision: opts.collision as PlacementCollisionMode,
+              rotateY: opts.rotateY as RotationY,
+              ...(opts.mirror !== undefined
+                ? { mirror: opts.mirror as PlacementMirrorAxis }
+                : {}),
+            })
+            : placeBlueprintRepeatedly(target, source, {
+              at: { x: opts.x, y: opts.y, z: opts.z },
+              step: { x: opts.stepX, y: opts.stepY, z: opts.stepZ },
+              repeat: opts.repeat,
+              include: opts.include as PlacementInclude,
+              collision: opts.collision as PlacementCollisionMode,
+              rotateY: opts.rotateY as RotationY,
+              ...(opts.mirror !== undefined
+                ? { mirror: opts.mirror as PlacementMirrorAxis }
+                : {}),
+            });
         } catch (e) {
           printError(e instanceof Error ? e.message : String(e), outputOpts);
         }
@@ -122,6 +159,10 @@ export function registerPlace(program: Command): void {
             source: opts.source,
             target: file,
             at: { x: opts.x, y: opts.y, z: opts.z },
+            repeat: opts.repeat,
+            ...(opts.repeat > 1
+              ? { step: { x: opts.stepX, y: opts.stepY, z: opts.stepZ } }
+              : {}),
             include: opts.include,
             collision: opts.collision,
             rotateY: opts.rotateY,
@@ -130,7 +171,7 @@ export function registerPlace(program: Command): void {
           },
           outputOpts,
           () =>
-            `Placed "${opts.source}" into "${file}" at (${opts.x}, ${opts.y}, ${opts.z}) include=${opts.include} collision=${opts.collision} rotateY=${opts.rotateY}${opts.mirror ? ` mirror=${opts.mirror}` : ""}.`
+            `Placed "${opts.source}" into "${file}" at (${opts.x}, ${opts.y}, ${opts.z}) repeat=${opts.repeat} include=${opts.include} collision=${opts.collision} rotateY=${opts.rotateY}${opts.mirror ? ` mirror=${opts.mirror}` : ""}${opts.repeat > 1 ? ` step=(${opts.stepX}, ${opts.stepY}, ${opts.stepZ})` : ""}.`
         );
       }
     );
