@@ -22,6 +22,7 @@ export function registerInit(program: Command): void {
       const blueprint: Blueprint = {
         version: CURRENT_VERSION,
         name,
+        palette: [],
         bounds: {
           min: { x: 0, y: 0, z: 0 },
           max: { x: 0, y: 0, z: 0 },

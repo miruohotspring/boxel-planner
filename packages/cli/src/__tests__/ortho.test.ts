@@ -163,6 +163,54 @@ describe("buildOrthoViews", () => {
     expect(result!.topGrid[0]).toHaveLength(3);
     expect(result!.topGrid[0]).toEqual(["■", "·", "■"]);
   });
+
+  it("crop=structure では scaffold の余白を表示範囲に含めない", () => {
+    const bp = makeBlueprint({
+      structure: [{ x: 0, y: 0, z: 0, color: "#FF0000" }],
+      scaffold: [{ x: 5, y: 0, z: 0, color: "#FF8C00" }],
+    });
+    const result = buildOrthoViews(bp, true, false, "solid", { crop: "structure" });
+    expect(result).not.toBeNull();
+    expect(result!.bounds.min.x).toBe(0);
+    expect(result!.bounds.max.x).toBe(0);
+    expect(result!.topGrid).toEqual([["■"]]);
+  });
+
+  it("center=true では空セルに中心線を描く", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: -1, y: 0, z: -1, color: "#FF0000" },
+        { x: 1, y: 0, z: 1, color: "#FF0000" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, false, "solid", { center: true });
+    expect(result).not.toBeNull();
+    expect(result!.topGrid[1]?.[1]).toBe("┼");
+  });
+
+  it("gridStep=2 では空セルに補助グリッドを描く", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 1, y: 0, z: 1, color: "#FF0000" },
+        { x: 3, y: 0, z: 3, color: "#FF0000" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, false, "solid", { gridStep: 2 });
+    expect(result).not.toBeNull();
+    expect(result!.topGrid[1]?.[1]).toBe("┼");
+  });
+
+  it("highlightColor では指定色を ◆ で強調する", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 0, y: 0, z: 0, color: "#FF0000" },
+        { x: 1, y: 0, z: 0, color: "#0000FF" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, false, "solid", { highlightColor: "#0000ff" });
+    expect(result).not.toBeNull();
+    expect(result!.topGrid[0]).toEqual(["■", "◆"]);
+  });
 });
 
 // ============================================================
@@ -239,6 +287,24 @@ describe("buildOrthoViews --verbose", () => {
     expect(result!.legend).toContain("b = #FF8C00");
     expect(result!.legend).toContain("(structure)");
     expect(result!.legend).toContain("(scaffold)");
+  });
+
+  it("palette 名と説明があると legend に出る", () => {
+    const bp = makeBlueprint({
+      palette: [
+        { name: "main-wall", color: "#FF0000", description: "主壁" },
+        { name: "roof-blue", color: "#0000FF", description: "屋根" },
+      ],
+      structure: [
+        { x: 0, y: 0, z: 0, color: "#FF0000" },
+        { x: 1, y: 0, z: 0, color: "#0000FF" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, true);
+    expect(result).not.toBeNull();
+    expect(result!.legend).toContain("main-wall");
+    expect(result!.legend).toContain("主壁");
+    expect(result!.legend).toContain("roof-blue");
   });
 
   it("TOP ビューで代表色は最も Y が大きいブロックの色", () => {

@@ -11,7 +11,15 @@ import { printData, printError, type OutputOptions } from "../lib/output.js";
 const BLOCK_CHAR = "■";
 const EMPTY_CHAR = "·";
 const SCAFFOLD_CHAR = "░";
+const HIGHLIGHT_CHAR = "◆";
+const HIGHLIGHT_SCAFFOLD_CHAR = "◇";
 const SYMBOLS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const CENTER_VERTICAL_CHAR = "│";
+const CENTER_HORIZONTAL_CHAR = "─";
+const CENTER_CROSS_CHAR = "┼";
+const GRID_VERTICAL_CHAR = "┆";
+const GRID_HORIZONTAL_CHAR = "┄";
+const GRID_CROSS_CHAR = "┼";
 
 export type OrthoMode = "solid" | "coord";
 export type OrthoCell = string | number | null;
@@ -24,6 +32,8 @@ interface ColorEntry {
   symbol: string;
   isScaffold: boolean;
   count: number;
+  paletteName?: string;
+  paletteDescription?: string;
 }
 
 interface ViewState {
@@ -31,11 +41,21 @@ interface ViewState {
   scaffold: Set<string>;
 }
 
+export interface OrthoRenderOptions {
+  crop?: "all" | "structure";
+  center?: boolean;
+  gridStep?: number;
+  highlightColor?: string;
+}
+
 function buildColorMap(
   blueprint: Blueprint,
   showScaffold: boolean
 ): Map<string, ColorEntry> {
   const colorInfo = new Map<string, ColorEntry>();
+  const paletteByColor = new Map(
+    (blueprint.palette ?? []).map((entry) => [entry.color.toUpperCase(), entry] as const)
+  );
   let symbolIndex = 0;
 
   const register = (block: Block, isScaffold: boolean) => {
@@ -43,7 +63,18 @@ function buildColorMap(
     if (!colorInfo.has(color)) {
       const symbol = symbolIndex < SYMBOLS.length ? SYMBOLS.charAt(symbolIndex) : "?";
       symbolIndex++;
-      colorInfo.set(color, { symbol, isScaffold, count: 0 });
+      const paletteEntry = paletteByColor.get(color);
+      colorInfo.set(color, {
+        symbol,
+        isScaffold,
+        count: 0,
+        ...(paletteEntry
+          ? {
+              paletteName: paletteEntry.name,
+              paletteDescription: paletteEntry.description,
+            }
+          : {}),
+      });
     }
     colorInfo.get(color)!.count++;
   };
@@ -132,6 +163,17 @@ function computeAllBounds(blueprint: Blueprint): Bounds | null {
   return computeBounds([...blueprint.structure, ...blueprint.scaffold]);
 }
 
+function computeDisplayBounds(
+  blueprint: Blueprint,
+  crop: "all" | "structure"
+): Bounds | null {
+  if (crop === "structure") {
+    const structureBounds = computeBounds(blueprint.structure);
+    if (structureBounds) return structureBounds;
+  }
+  return computeAllBounds(blueprint);
+}
+
 function buildTopState(blueprint: Blueprint): ViewState {
   const structure = new Set<string>();
   const scaffold = new Set<string>();
@@ -157,15 +199,18 @@ function buildSideState(blueprint: Blueprint): ViewState {
 }
 
 function buildSolidGrid(
-  bounds: Bounds,
   rows: number[],
   cols: number[],
   state: ViewState,
   showScaffold: boolean,
   colorInfo?: Map<string, ColorEntry>,
-  colorMap?: Map<string, string>
+  colorMap?: Map<string, string>,
+  opts: {
+    highlightColor?: string;
+  } = {}
 ): string[][] {
   const grid: string[][] = [];
+  const highlightColor = opts.highlightColor?.toUpperCase();
 
   for (const row of rows) {
     const outRow: string[] = [];
@@ -173,9 +218,15 @@ function buildSolidGrid(
       const key = `${col},${row}`;
       const hasStructure = state.structure.has(key);
       const hasScaffold = showScaffold && state.scaffold.has(key);
-      if (colorInfo && colorMap && (hasStructure || hasScaffold)) {
+      if (colorMap && (hasStructure || hasScaffold)) {
         const color = colorMap.get(key);
-        outRow.push(color ? (colorInfo.get(color)?.symbol ?? BLOCK_CHAR) : BLOCK_CHAR);
+        if (highlightColor && color === highlightColor) {
+          outRow.push(hasStructure ? HIGHLIGHT_CHAR : HIGHLIGHT_SCAFFOLD_CHAR);
+        } else if (colorInfo && color) {
+          outRow.push(colorInfo.get(color)?.symbol ?? BLOCK_CHAR);
+        } else {
+          outRow.push(hasStructure ? BLOCK_CHAR : SCAFFOLD_CHAR);
+        }
       } else if (hasStructure) {
         outRow.push(BLOCK_CHAR);
       } else if (hasScaffold) {
@@ -188,6 +239,39 @@ function buildSolidGrid(
   }
 
   return grid;
+}
+
+function applyGuidesToGrid(
+  grid: string[][],
+  rows: number[],
+  cols: number[],
+  opts: {
+    center?: boolean;
+    gridStep?: number;
+  }
+): string[][] {
+  return grid.map((row, rowIndex) =>
+    row.map((cell, colIndex) => {
+      if (cell !== EMPTY_CHAR) return cell;
+
+      const rowValue = rows[rowIndex]!;
+      const colValue = cols[colIndex]!;
+      const isCenterVertical = opts.center === true && colValue === 0;
+      const isCenterHorizontal = opts.center === true && rowValue === 0;
+      const isGridVertical =
+        opts.gridStep !== undefined && opts.gridStep > 0 && colValue % opts.gridStep === 0;
+      const isGridHorizontal =
+        opts.gridStep !== undefined && opts.gridStep > 0 && rowValue % opts.gridStep === 0;
+
+      if (isCenterVertical && isCenterHorizontal) return CENTER_CROSS_CHAR;
+      if (isCenterVertical) return CENTER_VERTICAL_CHAR;
+      if (isCenterHorizontal) return CENTER_HORIZONTAL_CHAR;
+      if (isGridVertical && isGridHorizontal) return GRID_CROSS_CHAR;
+      if (isGridVertical) return GRID_VERTICAL_CHAR;
+      if (isGridHorizontal) return GRID_HORIZONTAL_CHAR;
+      return cell;
+    })
+  );
 }
 
 function buildVisibleValueMap(
@@ -331,7 +415,8 @@ export function buildOrthoViews(
   blueprint: Blueprint,
   showScaffold: boolean,
   verbose = false,
-  mode: OrthoMode = "solid"
+  mode: OrthoMode = "solid",
+  opts: OrthoRenderOptions = {}
 ): {
   topGrid: OrthoCell[][];
   frontGrid: OrthoCell[][];
@@ -340,7 +425,7 @@ export function buildOrthoViews(
   legend?: string;
   mode: OrthoMode;
 } | null {
-  const bounds = computeAllBounds(blueprint);
+  const bounds = computeDisplayBounds(blueprint, opts.crop ?? "all");
   if (!bounds) return null;
 
   const topRows = Array.from({ length: bounds.max.z - bounds.min.z + 1 }, (_, i) => bounds.min.z + i);
@@ -362,37 +447,42 @@ export function buildOrthoViews(
   if (verbose) {
     const colorInfo = buildColorMap(blueprint, showScaffold);
     if (colorInfo.size > 1) {
-      const topGrid = buildSolidGrid(
-        bounds,
+      const topGrid = applyGuidesToGrid(buildSolidGrid(
         topRows,
         xCols,
         buildTopState(blueprint),
         showScaffold,
         colorInfo,
-        buildTopColorMap(blueprint, showScaffold)
-      );
-      const frontGrid = buildSolidGrid(
-        bounds,
+        buildTopColorMap(blueprint, showScaffold),
+        { highlightColor: opts.highlightColor }
+      ), topRows, xCols, opts);
+      const frontGrid = applyGuidesToGrid(buildSolidGrid(
         frontRows,
         xCols,
         buildFrontState(blueprint),
         showScaffold,
         colorInfo,
-        buildFrontColorMap(blueprint, showScaffold)
-      );
-      const sideGrid = buildSolidGrid(
-        bounds,
+        buildFrontColorMap(blueprint, showScaffold),
+        { highlightColor: opts.highlightColor }
+      ), frontRows, xCols, opts);
+      const sideGrid = applyGuidesToGrid(buildSolidGrid(
         sideRows,
         zCols,
         buildSideState(blueprint),
         showScaffold,
         colorInfo,
-        buildSideColorMap(blueprint, showScaffold)
-      );
+        buildSideColorMap(blueprint, showScaffold),
+        { highlightColor: opts.highlightColor }
+      ), sideRows, zCols, opts);
 
       const legendLines = ["Legend:"];
       for (const [color, info] of colorInfo.entries()) {
-        legendLines.push(`  ${info.symbol} = ${color}  ×${info.count}${info.isScaffold ? " (scaffold)" : " (structure)"}`);
+        const palettePart = info.paletteName
+          ? ` ${info.paletteName}${info.paletteDescription ? ` — ${info.paletteDescription}` : ""}`
+          : "";
+        legendLines.push(
+          `  ${info.symbol} = ${color}${palettePart}  ×${info.count}${info.isScaffold ? " (scaffold)" : " (structure)"}`
+        );
       }
 
       return {
@@ -407,9 +497,48 @@ export function buildOrthoViews(
   }
 
   return {
-    topGrid: buildSolidGrid(bounds, topRows, xCols, buildTopState(blueprint), showScaffold),
-    frontGrid: buildSolidGrid(bounds, frontRows, xCols, buildFrontState(blueprint), showScaffold),
-    sideGrid: buildSolidGrid(bounds, sideRows, zCols, buildSideState(blueprint), showScaffold),
+    topGrid: applyGuidesToGrid(
+      buildSolidGrid(
+        topRows,
+        xCols,
+        buildTopState(blueprint),
+        showScaffold,
+        undefined,
+        opts.highlightColor ? buildTopColorMap(blueprint, showScaffold) : undefined,
+        { highlightColor: opts.highlightColor }
+      ),
+      topRows,
+      xCols,
+      opts
+    ),
+    frontGrid: applyGuidesToGrid(
+      buildSolidGrid(
+        frontRows,
+        xCols,
+        buildFrontState(blueprint),
+        showScaffold,
+        undefined,
+        opts.highlightColor ? buildFrontColorMap(blueprint, showScaffold) : undefined,
+        { highlightColor: opts.highlightColor }
+      ),
+      frontRows,
+      xCols,
+      opts
+    ),
+    sideGrid: applyGuidesToGrid(
+      buildSolidGrid(
+        sideRows,
+        zCols,
+        buildSideState(blueprint),
+        showScaffold,
+        undefined,
+        opts.highlightColor ? buildSideColorMap(blueprint, showScaffold) : undefined,
+        { highlightColor: opts.highlightColor }
+      ),
+      sideRows,
+      zCols,
+      opts
+    ),
     bounds,
     mode,
   };
@@ -421,9 +550,10 @@ export function renderOrtho(
   verbose = false,
   mode: OrthoMode = "solid",
   view: OrthoView = "all",
-  coordStyle: OrthoCoordStyle = "raw"
+  coordStyle: OrthoCoordStyle = "raw",
+  opts: OrthoRenderOptions = {}
 ): string {
-  const result = buildOrthoViews(blueprint, showScaffold, verbose, mode);
+  const result = buildOrthoViews(blueprint, showScaffold, verbose, mode, opts);
   if (!result) return "(empty)";
 
   let { topGrid, frontGrid, sideGrid, bounds, legend } = result;
@@ -500,6 +630,9 @@ export function renderOrtho(
   if (legend) {
     output.push(legend);
   }
+  if (opts.highlightColor) {
+    output.push(`Highlight: ${opts.highlightColor.toUpperCase()} => ${HIGHLIGHT_CHAR}`);
+  }
   if (mode === "coord" && coordStyle === "braille") {
     output.push("Braille scale: low -> high = " + BRAILLE_LEVELS.join(""));
   }
@@ -518,6 +651,10 @@ export function registerOrtho(program: Command): void {
     .option("--style <style>", "coord モードの表示スタイル: raw | braille", "raw")
     .option("--y-min <n>", "表示するY座標の下限（床など低層を除外するときに使用）", Number)
     .option("--y-max <n>", "表示するY座標の上限", Number)
+    .option("--crop <target>", "表示範囲: all | structure", "all")
+    .option("--center", "原点の中心線を補助表示する")
+    .option("--grid <n>", "n 間隔の補助グリッドを表示する", Number)
+    .option("--highlight-color <#RRGGBB>", "指定色だけを強調表示する")
     .option("--json", "グリッドデータを JSON で出力する")
     .action((file: string, opts: {
       scaffold?: boolean;
@@ -527,12 +664,17 @@ export function registerOrtho(program: Command): void {
       style?: string;
       yMin?: number;
       yMax?: number;
+      crop?: string;
+      center?: boolean;
+      grid?: number;
+      highlightColor?: string;
       json?: boolean;
     }) => {
       const outputOpts: OutputOptions = { json: opts.json };
       const mode = (opts.mode ?? "solid") as OrthoMode;
       const view = (opts.view ?? "all") as OrthoView;
       const style = (opts.style ?? "raw") as OrthoCoordStyle;
+      const crop = (opts.crop ?? "all") as "all" | "structure";
       if (!["solid", "coord"].includes(mode)) {
         printError(`Invalid mode: "${opts.mode}". Must be "solid" or "coord".`, outputOpts);
       }
@@ -542,11 +684,23 @@ export function registerOrtho(program: Command): void {
       if (!["raw", "braille"].includes(style)) {
         printError(`Invalid style: "${opts.style}". Must be "raw" or "braille".`, outputOpts);
       }
+      if (!["all", "structure"].includes(crop)) {
+        printError(`Invalid crop: "${opts.crop}". Must be "all" or "structure".`, outputOpts);
+      }
       if ((opts.verbose ?? false) && mode === "coord") {
         printError("--verbose is only available with --mode solid.", outputOpts);
       }
       if (mode !== "coord" && style !== "raw") {
         printError("--style is only available with --mode coord.", outputOpts);
+      }
+      if (opts.highlightColor !== undefined && !/^#[0-9A-Fa-f]{6}$/.test(opts.highlightColor)) {
+        printError(`Invalid highlight-color: "${opts.highlightColor}". Must be #RRGGBB format.`, outputOpts);
+      }
+      if (opts.highlightColor !== undefined && mode === "coord") {
+        printError("--highlight-color is only available with --mode solid.", outputOpts);
+      }
+      if (opts.grid !== undefined && (!Number.isInteger(opts.grid) || opts.grid < 1)) {
+        printError("--grid must be an integer >= 1.", outputOpts);
       }
 
       let blueprint: Blueprint;
@@ -575,10 +729,17 @@ export function registerOrtho(program: Command): void {
             }
           : blueprint;
 
-      const orthoResult = buildOrthoViews(displayBlueprint, showScaffold, verbose, mode);
+      const renderOpts: OrthoRenderOptions = {
+        crop,
+        center: opts.center ?? false,
+        ...(opts.grid !== undefined ? { gridStep: opts.grid } : {}),
+        ...(opts.highlightColor !== undefined ? { highlightColor: opts.highlightColor } : {}),
+      };
+
+      const orthoResult = buildOrthoViews(displayBlueprint, showScaffold, verbose, mode, renderOpts);
       if (!orthoResult) {
         printData(
-          { mode, view, style, top: [], front: [], side: [], bounds: null },
+          { mode, view, style, crop, top: [], front: [], side: [], bounds: null },
           outputOpts,
           () => "(empty)"
         );
@@ -587,9 +748,19 @@ export function registerOrtho(program: Command): void {
 
       const { topGrid, frontGrid, sideGrid, bounds, legend } = orthoResult;
       printData(
-        { mode, view, style, bounds, top: topGrid, front: frontGrid, side: sideGrid, ...(legend ? { legend } : {}) },
+        {
+          mode,
+          view,
+          style,
+          crop,
+          bounds,
+          top: topGrid,
+          front: frontGrid,
+          side: sideGrid,
+          ...(legend ? { legend } : {}),
+        },
         outputOpts,
-        () => renderOrtho(displayBlueprint, showScaffold, verbose, mode, view, style)
+        () => renderOrtho(displayBlueprint, showScaffold, verbose, mode, view, style, renderOpts)
       );
     });
 }

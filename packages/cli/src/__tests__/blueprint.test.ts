@@ -7,6 +7,7 @@ import {
   mirrorBlockForPlacement,
   mirrorBlock,
   normalizeRange,
+  PlacementCollisionError,
   placeBlueprintIntoTarget,
   placeBlueprintRepeatedly,
   recenterBlueprint,
@@ -240,6 +241,43 @@ describe("lib/blueprint", () => {
         }
       )
     ).toThrow(/Placement collision/);
+  });
+
+  it("placeBlueprintIntoTarget: collision=error では衝突座標を保持する", () => {
+    try {
+      placeBlueprintIntoTarget(
+        {
+          version: "1.0",
+          name: "target",
+          bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+          structure: [{ x: 1, y: 2, z: 3, color: "#111111" }],
+          scaffold: [],
+        },
+        {
+          version: "1.0",
+          name: "source",
+          bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 0, z: 0 } },
+          structure: [
+            { x: 0, y: 0, z: 0, color: "#222222" },
+            { x: 1, y: 0, z: 0, color: "#333333" },
+          ],
+          scaffold: [],
+        },
+        {
+          at: { x: 1, y: 2, z: 3 },
+          include: "structure",
+          collision: "error",
+        }
+      );
+      throw new Error("expected PlacementCollisionError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PlacementCollisionError);
+      if (error instanceof PlacementCollisionError) {
+        expect(error.collisions).toEqual([
+          { x: 1, y: 2, z: 3 },
+        ]);
+      }
+    }
   });
 
   it("placeBlueprintIntoTarget: rotateY で向きを変えて配置できる", () => {

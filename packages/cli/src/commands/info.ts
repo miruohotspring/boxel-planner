@@ -18,7 +18,7 @@ export function registerInfo(program: Command): void {
         printError(e instanceof Error ? e.message : String(e), outputOpts);
       }
 
-      const { name, version, description, bounds, structure, scaffold } = blueprint;
+      const { name, version, description, palette, bounds, structure, scaffold } = blueprint;
       const allBounds = summarizeBounds([...structure, ...scaffold]) ?? {
         min: bounds.min,
         max: bounds.max,
@@ -35,6 +35,8 @@ export function registerInfo(program: Command): void {
         name,
         version,
         ...(description !== undefined ? { description } : {}),
+        paletteCount: palette?.length ?? 0,
+        ...(palette !== undefined ? { palette } : {}),
         structureBlocks: structure.length,
         scaffoldBlocks: scaffold.length,
         bounds: allBounds,
@@ -50,6 +52,7 @@ export function registerInfo(program: Command): void {
         if (description !== undefined) {
           lines.push(`Description: ${description}`);
         }
+        lines.push(`Palette:   ${palette?.length ?? 0} color(s)`);
         lines.push(
           `Structure: ${structure.length} block(s)`,
           `Scaffold:  ${scaffold.length} block(s)`,

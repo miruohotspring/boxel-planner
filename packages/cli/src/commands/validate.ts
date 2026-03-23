@@ -11,13 +11,24 @@ import {
   printValidationErrors,
   type OutputOptions,
 } from "../lib/output.js";
+import { lintBlueprint } from "../lib/lint.js";
 
 export function registerValidate(program: Command): void {
   program
     .command("validate <file>")
     .description("スキーマ検証と重複チェックを実行する")
+    .option("--lint", "推奨規約の lint を実行する")
+    .option("--strict-lint", "lint 指摘がある場合はエラー終了する")
+    .option("--max-wall-thickness <n>", "lint: 推奨する壁厚の上限", Number, 2)
+    .option("--min-colors <n>", "lint: 推奨する色数の下限", Number, 10)
     .option("--json", "JSON形式で結果を出力する")
-    .action((file: string, opts: { json?: boolean }) => {
+    .action((file: string, opts: {
+      lint?: boolean;
+      strictLint?: boolean;
+      maxWallThickness: number;
+      minColors: number;
+      json?: boolean;
+    }) => {
       const outputOpts: OutputOptions = { json: opts.json };
       const absPath = path.resolve(file);
 
@@ -49,10 +60,52 @@ export function registerValidate(program: Command): void {
         printValidationErrors(errors, outputOpts);
       }
 
+      if (!Number.isInteger(opts.maxWallThickness) || opts.maxWallThickness < 1) {
+        printError("--max-wall-thickness must be an integer >= 1.", outputOpts);
+      }
+
+      if (!Number.isInteger(opts.minColors) || opts.minColors < 1) {
+        printError("--min-colors must be an integer >= 1.", outputOpts);
+      }
+
+      const runLint = opts.lint ?? opts.strictLint ?? false;
+      const strictLint = opts.strictLint ?? false;
+      const lintResult = runLint
+        ? lintBlueprint(blueprint, {
+            maxWallThickness: opts.maxWallThickness,
+            minColors: opts.minColors,
+          })
+        : { issues: [] };
+
+      if (strictLint && lintResult.issues.length > 0) {
+        if (outputOpts.json) {
+          console.error(JSON.stringify({
+            ok: false,
+            errors: [],
+            lint: lintResult,
+          }));
+        } else {
+          console.error(`Lint issues in "${absPath}":`);
+          for (const issue of lintResult.issues) {
+            console.error(`  [${issue.rule}] ${issue.message}`);
+          }
+        }
+        process.exit(1);
+      }
+
       printData(
-        { valid: true },
+        { valid: true, ...(runLint ? { lint: lintResult } : {}) },
         outputOpts,
-        () => `OK: "${absPath}" is valid.`
+        () => {
+          const lines = [`OK: "${absPath}" is valid.`];
+          if (runLint) {
+            lines.push(`Lint: ${lintResult.issues.length} issue(s)`);
+            for (const issue of lintResult.issues) {
+              lines.push(`  [${issue.rule}] ${issue.message}`);
+            }
+          }
+          return lines.join("\n");
+        }
       );
     });
 }

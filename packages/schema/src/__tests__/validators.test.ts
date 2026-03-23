@@ -8,6 +8,9 @@ import {
 const validBlueprint = {
   version: "1.0" as const,
   name: "Test",
+  palette: [
+    { name: "stone-main", color: "#888888", description: "主石材" },
+  ],
   bounds: {
     min: { x: 0, y: 0, z: 0 },
     max: { x: 0, y: 0, z: 0 },
@@ -29,6 +32,12 @@ describe("validateBlueprint", () => {
     const { version: _, ...withoutVersion } = validBlueprint;
     const result = validateBlueprint(withoutVersion);
     expect(result.ok).toBe(false);
+  });
+
+  it("palette を省略しても ok: true を返す", () => {
+    const { palette: _, ...withoutPalette } = validBlueprint;
+    const result = validateBlueprint(withoutPalette);
+    expect(result.ok).toBe(true);
   });
 
   it("errors に path と message が含まれる", () => {

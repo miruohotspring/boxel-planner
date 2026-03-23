@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   Vec3Schema,
   ColorSchema,
+  PaletteEntrySchema,
   BlockSchema,
   BoundsSchema,
   BlueprintSchema,
@@ -48,6 +49,27 @@ describe("BlockSchema", () => {
   });
 });
 
+describe("PaletteEntrySchema", () => {
+  it("有効なパレット定義は parse できる", () => {
+    const entry = {
+      name: "stone-main",
+      color: "#AABBCC",
+      description: "主壁の石材色",
+    };
+    expect(PaletteEntrySchema.parse(entry)).toEqual(entry);
+  });
+
+  it("color が不正だと失敗する", () => {
+    expect(() =>
+      PaletteEntrySchema.parse({
+        name: "bad",
+        color: "blue",
+        description: "説明",
+      })
+    ).toThrow();
+  });
+});
+
 describe("BoundsSchema", () => {
   it("min <= max のとき valid", () => {
     const bounds = {
@@ -88,6 +110,10 @@ describe("BlueprintSchema", () => {
   const validBlueprint = {
     version: "1.0" as const,
     name: "Test Building",
+    palette: [
+      { name: "stone-main", color: "#888888", description: "主石材" },
+      { name: "roof-dark", color: "#203A74", description: "屋根の濃色" },
+    ],
     bounds: {
       min: { x: 0, y: 0, z: 0 },
       max: { x: 1, y: 1, z: 1 },
@@ -123,6 +149,11 @@ describe("BlueprintSchema", () => {
     expect(() =>
       BlueprintSchema.parse({ ...validBlueprint, description: "説明文" })
     ).not.toThrow();
+  });
+
+  it("palette を省略しても parse できる", () => {
+    const { palette: _, ...withoutPalette } = validBlueprint;
+    expect(() => BlueprintSchema.parse(withoutPalette)).not.toThrow();
   });
 
   it('version が "2.0" だと失敗する', () => {

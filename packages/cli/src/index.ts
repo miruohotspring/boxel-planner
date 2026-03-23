@@ -25,6 +25,7 @@ import { registerSurface } from "./commands/surface.js";
 import { registerOrtho } from "./commands/ortho.js";
 import { registerCheck } from "./commands/check.js";
 import { registerCheckAccess } from "./commands/check-access.js";
+import { registerPalette } from "./commands/palette.js";
 
 const program = new Command();
 
@@ -58,5 +59,6 @@ registerSurface(program);
 registerOrtho(program);
 registerCheck(program);
 registerCheckAccess(program);
+registerPalette(program);
 
 program.parse();

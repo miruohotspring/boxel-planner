@@ -6,6 +6,7 @@ export interface UseColorPaletteReturn {
   selectedColor: string;
   selectColor: (color: string) => void;
   addColor: (color: string) => void;
+  replaceColors: (colors: string[]) => void;
 }
 
 export function useColorPalette(): UseColorPaletteReturn {
@@ -25,10 +26,23 @@ export function useColorPalette(): UseColorPaletteReturn {
     setSelectedColor(color);
   }, []);
 
+  const replaceColors = useCallback((nextColors: string[]) => {
+    const filtered = nextColors.filter(isValidColor);
+    const unique = Array.from(new Set(filtered));
+    if (unique.length === 0) {
+      setColors(DEFAULT_COLORS);
+      setSelectedColor(DEFAULT_COLORS[0]);
+      return;
+    }
+    setColors(unique);
+    setSelectedColor((prev) => (unique.includes(prev) ? prev : unique[0]!));
+  }, []);
+
   return {
     colors,
     selectedColor,
     selectColor,
     addColor,
+    replaceColors,
   };
 }

@@ -63,6 +63,18 @@ boxel <command>
   "version": "1.0",
   "name": "my-build",
   "description": "説明（省略可）",
+  "palette": [
+    {
+      "name": "stone-main",
+      "color": "#888888",
+      "description": "主壁の石材色"
+    },
+    {
+      "name": "roof-dark",
+      "color": "#3E5FA8",
+      "description": "屋根の濃色"
+    }
+  ],
   "bounds": {
     "min": { "x": 0, "y": 0, "z": 0 },
     "max": { "x": 4, "y": 7, "z": 4 }
@@ -80,6 +92,7 @@ boxel <command>
 |---|---|
 | `structure` | 建物本体のブロック配列 |
 | `scaffold` | 足場ブロック配列（別管理、自動生成される） |
+| `palette` | 推奨カラーパレット定義。各要素は `name` / `color` / `description` を持つ |
 | `bounds` | 全ブロックを包む AABB（fill/add 後に自動再計算） |
 
 ### 座標系
@@ -95,6 +108,7 @@ boxel <command>
 - ファイル形式自体は抽象座標のままです
 - ただし、実在建築の再現や「50x50x50 くらい」のような指示は、基本的に `50m 級` と読んで構いません
 - 例: 高さ 12m の門楼を作りたいなら、まず `y=0..11` 前後で考えます
+- 壁厚は原則 `1 block`、重厚な石造表現でも `2 block` までを基本としてください。`3 block` 以上は意図が明確な場合に限ります
 
 ### 推奨座標規約【重要】
 
@@ -115,6 +129,27 @@ boxel <command>
 - `#RRGGBB` 形式のみ（例: `#888888`、`#8B4513`）
 - 小文字も可（`#aaaaaa` など）
 
+### 推奨カラーパレット規約【重要】
+
+ユーザーから色指定がない場合、建築を始める前にトップレベル `palette` を先に定義してください。
+
+- まず用途ごとに `10〜30` 色程度のパレットを作る
+- 各要素は `name`, `color`, `description` を持つ
+- `name` は短い識別子、`description` は何に使う色かを明記する
+- 実作業では、定義した `palette` から色を選んで `fill` / `add` / `roof` / `spire` に使う
+- 白い城でも `白1色 + 灰1色` では足りません。主壁、縁石、影、屋根、窓奥、金物、地盤などを分けてください
+
+例:
+
+```json
+"palette": [
+  { "name": "main-wall", "color": "#E7EBF2", "description": "主壁の白い石材" },
+  { "name": "trim-white", "color": "#F8FAFD", "description": "窓回りや塔の縁石" },
+  { "name": "roof-blue", "color": "#4A5C8F", "description": "尖塔の青い屋根" },
+  { "name": "window-deep", "color": "#20314E", "description": "窓の奥行きと影" }
+]
+```
+
 ---
 
 ## 3. LLM が使うべきコマンドフロー
@@ -129,6 +164,21 @@ boxel init myhouse --json
 ```
 
 `init` 直後は空ファイルなので原点は未確定です。最初の床や中心塔を置くときに、上の推奨座標規約に合わせて座標を決めてください。
+また、ユーザーから色指定がない場合は、この段階で `palette` を用途別に `10〜30` 色程度追加してから作業を始めてください。
+
+```bash
+boxel palette add myhouse.boxel.json \
+  --name main-wall \
+  --color "#E7EBF2" \
+  --description "主壁の白い石材"
+
+boxel palette add myhouse.boxel.json \
+  --name roof-blue \
+  --color "#4A5C8F" \
+  --description "主屋根の青いスレート"
+
+boxel palette list myhouse.boxel.json
+```
 
 ### Step 2: `fill` や `add` で構造を作る
 
@@ -260,6 +310,14 @@ boxel ortho myhouse.boxel.json
 
 実在建築の正面再現では、`FRONT` で立面、`SIDE` で屋根勾配と奥行きを確認すると詰めやすくなります。
 
+見やすくする補助オプション:
+
+```bash
+boxel ortho myhouse.boxel.json --crop structure --center --grid 5
+boxel ortho myhouse.boxel.json --highlight-color "#20314E"
+boxel ortho myhouse.boxel.json --verbose
+```
+
 #### `ortho --mode coord` — 可視面の座標値で穴や段差を確認
 
 `solid` モードの `■` 表示では、シルエットは見えても「どの高さ/奥行きの面が見えているか」は分かりません。`coord` モードでは、各セルに見えている面の座標値を表示します。
@@ -358,6 +416,18 @@ boxel scaffold generate myhouse.boxel.json --margin 1 --json
 boxel validate myhouse.boxel.json --json
 # => { "ok": true, "data": { "valid": true } }
 ```
+
+推奨規約も合わせて見たいときは lint を使います。
+
+```bash
+boxel validate myhouse.boxel.json --lint
+boxel validate myhouse.boxel.json --lint --strict-lint
+```
+
+現在の lint:
+
+- 壁厚 heuristic: exposed face から見た連続厚みが `--max-wall-thickness` を超えないか
+- 色数: `palette` があればその件数、なければ structure 使用色数が `--min-colors` 以上か
 
 ### Step 6: `info --json` で機械可読な概要取得
 

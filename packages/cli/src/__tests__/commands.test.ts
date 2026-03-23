@@ -26,6 +26,7 @@ function makeBlueprint(overrides: Partial<Blueprint> = {}): Blueprint {
   return {
     version: "1.0",
     name: "test",
+    palette: [],
     bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
     structure: [],
     scaffold: [],
@@ -45,14 +46,23 @@ function readFixture(filePath: string): Blueprint {
 // lib/file
 // ============================================================
 import { readBlueprint, writeBlueprint } from "../lib/file.js";
+import {
+  addPaletteEntry,
+  updatePaletteEntry,
+  removePaletteEntry,
+} from "../commands/palette.js";
 
 describe("lib/file", () => {
   it("readBlueprint: 有効なファイルを読み込める", () => {
     const fp = tmpFile("test.boxel.json");
-    const bp = makeBlueprint({ name: "hello" });
+    const bp = makeBlueprint({
+      name: "hello",
+      palette: [{ name: "stone", color: "#888888", description: "石材" }],
+    });
     writeFixture(fp, bp);
     const result = readBlueprint(fp);
     expect(result.name).toBe("hello");
+    expect(result.palette).toHaveLength(1);
   });
 
   it("readBlueprint: 存在しないファイルで例外", () => {
@@ -81,8 +91,70 @@ describe("init command logic", () => {
   it("新規 Blueprint の初期構造が正しい", () => {
     const bp = makeBlueprint({ name: "myhouse", structure: [], scaffold: [] });
     expect(bp.version).toBe("1.0");
+    expect(bp.palette).toEqual([]);
     expect(bp.structure).toHaveLength(0);
     expect(bp.scaffold).toHaveLength(0);
+  });
+});
+
+// ============================================================
+// commands/palette ロジック
+// ============================================================
+describe("palette command logic", () => {
+  it("パレット定義を追加できる", () => {
+    const bp = makeBlueprint();
+    const updated = addPaletteEntry(bp, {
+      name: "stone-main",
+      color: "#E8ECF5",
+      description: "主壁色",
+    });
+    expect(updated.palette).toEqual([
+      { name: "stone-main", color: "#E8ECF5", description: "主壁色" },
+    ]);
+  });
+
+  it("同名のパレット定義は追加できない", () => {
+    const bp = makeBlueprint({
+      palette: [{ name: "stone-main", color: "#E8ECF5", description: "主壁色" }],
+    });
+    expect(() =>
+      addPaletteEntry(bp, {
+        name: "stone-main",
+        color: "#FFFFFF",
+        description: "別色",
+      })
+    ).toThrow(/already exists/);
+  });
+
+  it("パレット定義を更新できる", () => {
+    const bp = makeBlueprint({
+      palette: [{ name: "stone-main", color: "#E8ECF5", description: "主壁色" }],
+    });
+    const updated = updatePaletteEntry(bp, "stone-main", {
+      color: "#FFFFFF",
+      description: "より明るい石材",
+    });
+    expect(updated.palette).toEqual([
+      { name: "stone-main", color: "#FFFFFF", description: "より明るい石材" },
+    ]);
+  });
+
+  it("パレット定義の名前を変更できる", () => {
+    const bp = makeBlueprint({
+      palette: [{ name: "stone-main", color: "#E8ECF5", description: "主壁色" }],
+    });
+    const updated = updatePaletteEntry(bp, "stone-main", {
+      newName: "wall-main",
+    });
+    expect(updated.palette?.[0]?.name).toBe("wall-main");
+  });
+
+  it("パレット定義を削除できる", () => {
+    const bp = makeBlueprint({
+      palette: [{ name: "stone-main", color: "#E8ECF5", description: "主壁色" }],
+    });
+    const updated = removePaletteEntry(bp, "stone-main");
+    expect(updated.palette).toEqual([]);
   });
 });
 

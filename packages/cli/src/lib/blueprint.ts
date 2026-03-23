@@ -44,6 +44,29 @@ export interface RecenterResult {
   offset: { x: number; y: number; z: number };
 }
 
+export interface PlacementCollisionPoint {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export class PlacementCollisionError extends Error {
+  readonly collisions: PlacementCollisionPoint[];
+  readonly totalCollisions: number;
+
+  constructor(collisions: PlacementCollisionPoint[], totalCollisions = collisions.length) {
+    const preview = collisions
+      .slice(0, 8)
+      .map((point) => `(${point.x},${point.y},${point.z})`)
+      .join(", ");
+    const remainder = totalCollisions > 8 ? ` ... +${totalCollisions - 8} more` : "";
+    super(`Placement collision detected at ${totalCollisions} position(s): ${preview}${remainder}`);
+    this.name = "PlacementCollisionError";
+    this.collisions = collisions;
+    this.totalCollisions = totalCollisions;
+  }
+}
+
 export function normalizeRange(range: {
   x1: number;
   y1: number;
@@ -283,12 +306,18 @@ export function placeBlueprintIntoTarget(
   const placedOccupied = buildCombinedOccupancy(placedStructure, placedScaffold);
 
   let collisions = 0;
+  const collisionPoints: PlacementCollisionPoint[] = [];
   for (const key of placedOccupied) {
-    if (targetOccupied.has(key)) collisions++;
+    if (!targetOccupied.has(key)) continue;
+    collisions++;
+    if (collisionPoints.length < 100) {
+      const [x, y, z] = key.split(",").map(Number);
+      collisionPoints.push({ x, y, z });
+    }
   }
 
   if (collisions > 0 && opts.collision === "error") {
-    throw new Error(`Placement collision detected at ${collisions} position(s).`);
+    throw new PlacementCollisionError(collisionPoints, collisions);
   }
 
   let skipped = 0;

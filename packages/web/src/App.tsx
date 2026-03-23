@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { type Blueprint } from "@boxel-planner/schema";
 import { Toolbar } from "./components/Toolbar.tsx";
 import { View3D } from "./components/View3D.tsx";
@@ -10,7 +10,7 @@ import { importFromText } from "./lib/importExport.ts";
 
 export default function App() {
   const { blueprint, setBlueprint, addBlock, removeBlock } = useBlueprint();
-  const { colors, selectedColor, selectColor, addColor } = useColorPalette();
+  const { colors, selectedColor, selectColor, addColor, replaceColors } = useColorPalette();
 
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const [showScaffold, setShowScaffold] = useState(true);
@@ -26,6 +26,10 @@ export default function App() {
     setCurrentY(bp.bounds.min.y);
     setImportError(null);
   }
+
+  useEffect(() => {
+    replaceColors(blueprint?.palette?.map((entry) => entry.color) ?? []);
+  }, [blueprint, replaceColors]);
 
   function handleImportError(err: string) {
     setImportError(err);

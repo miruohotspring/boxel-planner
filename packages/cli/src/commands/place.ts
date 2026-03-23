@@ -8,6 +8,7 @@ import { printData, printError, warnNegativeCoords, type OutputOptions } from ".
 import {
   placeBlueprintIntoTarget,
   placeBlueprintRepeatedly,
+  PlacementCollisionError,
   type PlacementCollisionMode,
   type PlacementInclude,
   type PlacementMirrorAxis,
@@ -139,6 +140,20 @@ export function registerPlace(program: Command): void {
                 : {}),
             });
         } catch (e) {
+          if (e instanceof PlacementCollisionError) {
+            if (outputOpts.json) {
+              console.error(
+                JSON.stringify({
+                  ok: false,
+                  error: e.message,
+                  collisionCount: e.totalCollisions,
+                  collisions: e.collisions,
+                })
+              );
+              process.exit(1);
+            }
+            printError(e.message, outputOpts);
+          }
           printError(e instanceof Error ? e.message : String(e), outputOpts);
         }
 

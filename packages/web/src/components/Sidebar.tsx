@@ -181,6 +181,10 @@ export function Sidebar({
               value={blueprint.structure.length.toLocaleString()}
             />
             <InfoRow
+              label="Palette"
+              value={(blueprint.palette?.length ?? 0).toLocaleString()}
+            />
+            <InfoRow
               label="Scaffold"
               value={blueprint.scaffold.length.toLocaleString()}
             />

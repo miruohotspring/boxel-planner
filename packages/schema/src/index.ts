@@ -1,10 +1,11 @@
 // 型
-export type { Vec3, Color, Block, Bounds, Blueprint } from "./types.js";
+export type { Vec3, Color, PaletteEntry, Block, Bounds, Blueprint } from "./types.js";
 
 // Zod スキーマ（バリデーション拡張が必要なケース向け）
 export {
   Vec3Schema,
   ColorSchema,
+  PaletteEntrySchema,
   BlockSchema,
   BoundsSchema,
   BlueprintSchema,
