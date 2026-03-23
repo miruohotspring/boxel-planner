@@ -1,0 +1,247 @@
+# boxel-planner
+
+Minecraft などのボクセル系ゲームにおける建築を支援するツールセット。
+LLM（Claude / Codex など）が操作できる CLI と、設計図をグラフィカルに確認・編集できる Web UI で構成されます。
+
+---
+
+## 概要
+
+```
+┌─────────────────────────────────────────────────┐
+│  LLM (Claude / Codex)                           │
+│    ↓  自然言語で指示                              │
+│  boxel-cli  ←→  設計図ファイル (.boxel.json)     │
+│                     ↓  インポート                 │
+│               boxel-web (Web UI)                 │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## 設計図ファイル形式 `.boxel.json`
+
+### 概念
+
+設計図は **本体ブロック** と **足場ブロック** の 2 層で構成されます。
+
+- **本体 (structure)** : 実際にゲーム内で建てるブロック
+- **足場 (scaffold)** : 建設時に使う仮設の骨組み。3D プリンターのサポート材のようなイメージ
+
+### 座標系
+
+右手系 XYZ。Y が高さ方向。原点は構造物の任意の基準点。
+
+### スキーマ
+
+```jsonc
+{
+  "version": "1.0",
+  "name": "My Tower",
+  "description": "シンプルな石造りの塔",
+  "bounds": {
+    "min": { "x": 0, "y": 0, "z": 0 },
+    "max": { "x": 9, "y": 19, "z": 9 }
+  },
+  "structure": [
+    { "x": 0, "y": 0, "z": 0, "color": "#888888" },
+    { "x": 1, "y": 0, "z": 0, "color": "#888888" }
+    // ...
+  ],
+  "scaffold": [
+    { "x": -1, "y": 0, "z": 0, "color": "#F5A623" },
+    { "x": -1, "y": 1, "z": 0, "color": "#F5A623" }
+    // ...
+  ]
+}
+```
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `version` | string | フォーマットバージョン |
+| `name` | string | 建築名 |
+| `description` | string | 任意の説明文 |
+| `bounds` | object | 本体の最小・最大座標（自動計算可） |
+| `structure` | Block[] | 本体ブロック一覧 |
+| `scaffold` | Block[] | 足場ブロック一覧 |
+
+**Block**
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `x`, `y`, `z` | integer | ブロック座標 |
+| `color` | string | CSS 16進カラーコード（`#RRGGBB`） |
+
+---
+
+## CLI `boxel-cli`
+
+LLM が読み書きしやすいシンプルな設計。すべてのコマンドは `--json` フラグで機械可読な JSON 出力に切り替え可能。
+
+### インストール（予定）
+
+```bash
+npm install -g boxel-cli
+```
+
+### コマンド一覧
+
+#### ファイル操作
+
+```bash
+# 新規設計図を作成
+boxel init <name> [--out <file>]
+
+# 設計図の概要を表示
+boxel info <file>
+
+# 設計図を検証（スキーマ整合・重複チェック等）
+boxel validate <file>
+```
+
+#### ブロック操作
+
+```bash
+# ブロックを追加（上書き）
+boxel add <file> --x <n> --y <n> --z <n> --color <#RRGGBB> [--layer scaffold]
+
+# ブロックを削除
+boxel remove <file> --x <n> --y <n> --z <n> [--layer scaffold]
+
+# 指定座標のブロック情報を取得
+boxel get <file> --x <n> --y <n> --z <n>
+
+# 指定 Y 断面のブロック一覧を取得
+boxel slice <file> --y <n> [--layer structure|scaffold|all]
+```
+
+#### 一括操作
+
+```bash
+# 直方体領域を一色で塗りつぶす
+boxel fill <file> \
+  --x1 <n> --y1 <n> --z1 <n> \
+  --x2 <n> --y2 <n> --z2 <n> \
+  --color <#RRGGBB> [--hollow]
+
+# 足場を自動生成（外周フレーム + 柱）
+boxel scaffold generate <file> [--margin <n>]
+
+# 足場をクリア
+boxel scaffold clear <file>
+```
+
+#### 出力
+
+```bash
+# 断面図をテキストで出力（LLM 確認用）
+boxel render <file> --y <n>
+
+# 例:
+# Y=0 断面:
+# ##########
+# #        #
+# #        #
+# ##########
+```
+
+### LLM 向け利用イメージ
+
+```
+[Human → LLM への指示例]
+"10x10 の石造りの塔（高さ 15）を設計して boxel-cli で出力して"
+
+[LLM が実行するコマンド列]
+boxel init "Stone Tower" --out tower.boxel.json
+boxel fill tower.boxel.json --x1 0 --y1 0 --z1 0 --x2 9 --y2 14 --z2 9 \
+  --color #888888 --hollow
+boxel scaffold generate tower.boxel.json
+boxel info tower.boxel.json --json
+```
+
+---
+
+## Web UI `boxel-web`
+
+### 機能一覧
+
+| 機能 | 説明 |
+|---|---|
+| ファイルインポート | `.boxel.json` をドラッグ＆ドロップまたは選択 |
+| 3D ビュー | ボクセルを Three.js でレンダリング。回転・拡大縮小・移動対応 |
+| 2D 断面ビュー | Y 軸方向にスライスした断面を 1 段ずつ表示 |
+| 断面編集 | 2D ビュー上でクリック・ドラッグによるブロックの追加・削除・色変更 |
+| 足場表示トグル | 足場の表示/非表示を切り替え |
+| カラーパレット | よく使う色をパレットに登録し、ワンクリックで選択 |
+| エクスポート | 編集後の設計図を `.boxel.json` として保存 |
+
+### UI レイアウト（概念図）
+
+```
+┌──────────────────────────────────────────────────┐
+│  [Import]  [Export]    [3D] [2D]  [足場: ON/OFF]  │  ← ツールバー
+├────────────────────────────┬─────────────────────┤
+│                            │  Color Palette       │
+│                            │  ■ ■ ■ ■ ■ ■        │
+│   3D / 2D ビュー           │──────────────────── │
+│                            │  Layer: Y = [  3 ]   │
+│                            │  ← 1 段ずつスライド →  │
+│                            │──────────────────── │
+│                            │  建築名: My Tower    │
+│                            │  ブロック数: 1,234   │
+└────────────────────────────┴─────────────────────┘
+```
+
+### 操作
+
+**3D ビュー**
+- 左ドラッグ: 回転
+- 右ドラッグ / 中ドラッグ: 移動
+- スクロール: ズーム
+
+**2D ビュー（編集モード）**
+- 左クリック: 選択中の色でブロックを配置
+- 右クリック: ブロックを削除
+- `Y` スライダー: 表示する断面を切り替え
+
+---
+
+## 技術スタック（予定）
+
+| レイヤー | 技術 |
+|---|---|
+| CLI | Node.js + TypeScript, Commander.js |
+| Web UI フレームワーク | React + TypeScript + Vite |
+| 3D レンダリング | Three.js（@react-three/fiber） |
+| 2D 編集 Canvas | React + Canvas API |
+| スタイリング | Tailwind CSS |
+| ファイル形式 | JSON（`zod` でスキーマ検証） |
+
+---
+
+## リポジトリ構成（予定）
+
+```
+boxel-planner/
+├── packages/
+│   ├── schema/        # 設計図ファイルの型定義・バリデーション（共有）
+│   ├── cli/           # boxel-cli
+│   └── web/           # boxel-web
+├── docs/
+│   ├── file-format.md # 設計図ファイル仕様詳細
+│   └── cli-guide.md   # LLM 向け CLI 操作ガイド
+└── README.md
+```
+
+---
+
+## ロードマップ
+
+- [ ] `packages/schema` : ファイル形式定義・バリデーター
+- [ ] `packages/cli` : 基本コマンド実装
+- [ ] `packages/cli` : 足場自動生成
+- [ ] `packages/web` : 3D ビュー
+- [ ] `packages/web` : 2D 断面ビュー
+- [ ] `packages/web` : 2D 編集機能
+- [ ] `packages/web` : カラーパレット
+- [ ] ドキュメント整備
