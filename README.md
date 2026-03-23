@@ -124,6 +124,25 @@ boxel fill <file> \
   --x2 <n> --y2 <n> --z2 <n> \
   --color <#RRGGBB> [--hollow]
 
+# 指定範囲を平行移動コピー
+boxel copy <file> \
+  --x1 <n> --y1 <n> --z1 <n> \
+  --x2 <n> --y2 <n> --z2 <n> \
+  --dx <n> --dy <n> --dz <n> [--repeat <n>]
+
+# 指定範囲を鏡映コピー
+boxel mirror <file> \
+  --x1 <n> --y1 <n> --z1 <n> \
+  --x2 <n> --y2 <n> --z2 <n> \
+  --axis <x|y|z> --origin <n>
+
+# 別ファイルの部品を配置
+boxel place <file> \
+  --source <part.boxel.json> \
+  --x <n> --y <n> --z <n> \
+  [--collision <ours|theirs|error>] \
+  [--rotate-y <0|90|180|270>] [--mirror <x|z>]
+
 # 足場を自動生成（外周フレーム + 柱）
 boxel scaffold generate <file> [--margin <n>]
 

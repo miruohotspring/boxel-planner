@@ -1,6 +1,7 @@
 import { type Command } from "commander";
 import { readBlueprint } from "../lib/file.js";
 import { printData, printError, type OutputOptions } from "../lib/output.js";
+import { summarizeBounds } from "../lib/blueprint.js";
 
 export function registerInfo(program: Command): void {
   program
@@ -18,9 +19,17 @@ export function registerInfo(program: Command): void {
       }
 
       const { name, version, description, bounds, structure, scaffold } = blueprint;
-      const sizeX = bounds.max.x - bounds.min.x + 1;
-      const sizeY = bounds.max.y - bounds.min.y + 1;
-      const sizeZ = bounds.max.z - bounds.min.z + 1;
+      const allBounds = summarizeBounds([...structure, ...scaffold]) ?? {
+        min: bounds.min,
+        max: bounds.max,
+        size: {
+          x: bounds.max.x - bounds.min.x + 1,
+          y: bounds.max.y - bounds.min.y + 1,
+          z: bounds.max.z - bounds.min.z + 1,
+        },
+      };
+      const structureBounds = summarizeBounds(structure);
+      const scaffoldBounds = summarizeBounds(scaffold);
 
       const info = {
         name,
@@ -28,11 +37,9 @@ export function registerInfo(program: Command): void {
         ...(description !== undefined ? { description } : {}),
         structureBlocks: structure.length,
         scaffoldBlocks: scaffold.length,
-        bounds: {
-          min: bounds.min,
-          max: bounds.max,
-          size: { x: sizeX, y: sizeY, z: sizeZ },
-        },
+        bounds: allBounds,
+        structureBounds,
+        scaffoldBounds,
       };
 
       printData(info, outputOpts, () => {
@@ -46,9 +53,21 @@ export function registerInfo(program: Command): void {
         lines.push(
           `Structure: ${structure.length} block(s)`,
           `Scaffold:  ${scaffold.length} block(s)`,
-          `Bounds:    (${bounds.min.x}, ${bounds.min.y}, ${bounds.min.z}) → (${bounds.max.x}, ${bounds.max.y}, ${bounds.max.z})`,
-          `Size:      ${sizeX} x ${sizeY} x ${sizeZ}`
+          `Bounds:    (${allBounds.min.x}, ${allBounds.min.y}, ${allBounds.min.z}) → (${allBounds.max.x}, ${allBounds.max.y}, ${allBounds.max.z})`,
+          `Size:      ${allBounds.size.x} x ${allBounds.size.y} x ${allBounds.size.z}`
         );
+        if (structureBounds) {
+          lines.push(
+            `Structure Bounds: (${structureBounds.min.x}, ${structureBounds.min.y}, ${structureBounds.min.z}) → (${structureBounds.max.x}, ${structureBounds.max.y}, ${structureBounds.max.z})`,
+            `Structure Size:   ${structureBounds.size.x} x ${structureBounds.size.y} x ${structureBounds.size.z}`
+          );
+        }
+        if (scaffoldBounds) {
+          lines.push(
+            `Scaffold Bounds:  (${scaffoldBounds.min.x}, ${scaffoldBounds.min.y}, ${scaffoldBounds.min.z}) → (${scaffoldBounds.max.x}, ${scaffoldBounds.max.y}, ${scaffoldBounds.max.z})`,
+            `Scaffold Size:    ${scaffoldBounds.size.x} x ${scaffoldBounds.size.y} x ${scaffoldBounds.size.z}`
+          );
+        }
         return lines.join("\n");
       });
     });

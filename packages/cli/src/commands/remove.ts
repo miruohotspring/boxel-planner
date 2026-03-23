@@ -111,7 +111,10 @@ export function registerRemove(program: Command): void {
             ? { structure: filtered, scaffold: blueprint.scaffold }
             : { structure: blueprint.structure, scaffold: filtered };
 
-          const newBounds = computeBounds(updatedLayer.structure) ?? blueprint.bounds;
+          const newBounds = computeBounds([
+            ...updatedLayer.structure,
+            ...updatedLayer.scaffold,
+          ]) ?? blueprint.bounds;
 
           const updated: Blueprint = {
             ...blueprint,
@@ -169,7 +172,10 @@ export function registerRemove(program: Command): void {
             removedCount += before - newScaffold.length;
           }
 
-          const newBounds = computeBounds(newStructure) ?? blueprint.bounds;
+          const newBounds = computeBounds([
+            ...newStructure,
+            ...newScaffold,
+          ]) ?? blueprint.bounds;
 
           const updated: Blueprint = {
             ...blueprint,

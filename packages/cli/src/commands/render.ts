@@ -54,7 +54,7 @@ export function renderSlice(
     const registerColor = (block: Block, isScaffold: boolean) => {
       const color = block.color.toUpperCase();
       if (!colorInfo.has(color)) {
-        const symbol = symbolIndex < SYMBOLS.length ? SYMBOLS[symbolIndex] : "?";
+        const symbol = symbolIndex < SYMBOLS.length ? SYMBOLS.charAt(symbolIndex) : "?";
         symbolIndex++;
         colorInfo.set(color, { symbol, isScaffold, count: 0 });
       }

@@ -124,6 +124,46 @@ boxel remove myhouse.boxel.json --x 3 --y 2 --z 0
 >
 > 出力の `added` は新規ブロック数、`updated` は色が変わった既存ブロック数です。色変更だけのとき `added: 0, updated: N` と表示されますが、ファイルは正常に更新されています。
 
+### Step 2.5: 部品配置や対称・反復は `place` / `copy` / `mirror` を使う
+
+大きな建築物では、部品を別ファイルで作って配置したり、片側だけ作って複製した方が速くて精度も安定します。
+
+```bash
+# 塔の部品を別ファイルから配置
+boxel place castle.boxel.json \
+  --source big_tower.boxel.json \
+  --x 36 --y 0 --z 18 \
+  --collision error
+
+# 同じ部品を回転して反対向きに配置
+boxel place castle.boxel.json \
+  --source gate_wing.boxel.json \
+  --x 8 --y 0 --z 20 \
+  --rotate-y 180 --mirror x \
+  --collision theirs
+
+# 左右対称の翼棟を片側から複製
+boxel mirror castle.boxel.json \
+  --x1 4 --y1 0 --z1 10 \
+  --x2 18 --y2 20 --z2 30 \
+  --axis x --origin 24.5
+
+# 窓や柱を等間隔で並べる
+boxel copy castle.boxel.json \
+  --x1 8 --y1 5 --z1 12 \
+  --x2 9 --y2 8 --z2 12 \
+  --dx 4 --dy 0 --dz 0 --repeat 5
+```
+
+使い分け:
+- `place`: 別ファイルで作った部品を合成する
+- `mirror`: 左右対称・前後対称・上下対称の複製
+- `copy`: 窓列、柱列、胸壁、連続アーチなどの反復
+
+`mirror --origin` は整数だけでなく `.5` も使えます。たとえば `--axis x --origin 24.5` は X=24 と X=25 の間を鏡面にします。
+`place` は source 側のローカル原点 `(0,0,0)` を target 側の `(--x, --y, --z)` に合わせて配置します。
+`place` の変換順は `mirror -> rotate-y -> translate` です。
+
 ### Step 3: 形状を確認する【重要】
 
 **テキストでの状態確認は render / ortho だけです。必ず確認してから次のステップへ進んでください。**
@@ -212,8 +252,23 @@ boxel validate myhouse.boxel.json --json
 
 ```bash
 boxel info myhouse.boxel.json --json
-# => { "ok": true, "data": { "structureBlocks": 156, "bounds": { ... } } }
+# => { "ok": true, "data": { "structureBlocks": 156, "bounds": { ... }, "structureBounds": { ... } } }
 ```
+
+`scaffold generate` の後は `bounds` が足場込みになるため、実建築サイズを見たいときは `structureBounds` を参照してください。
+
+### 大きめ建築の進め方
+
+城や駅舎のような大きな建築では、次の順で進めると崩れにくくなります。
+
+1. `fill` / `cylinder` でシルエットの主ボリュームだけ作る
+2. `ortho --y-min 1` で TOP / FRONT / SIDE の見え方を確認する
+3. 大きい部品は別ファイルで作って `place` で合成する
+4. 片側だけ細部を作り、`mirror` で反対側へ複製する
+5. 窓や柱は `copy --repeat` で等間隔に並べる
+6. 最後に `render --color` で装飾や配色を確認する
+
+最初から窓や胸壁を彫り込み始めると、全体比率が崩れたときの手戻りが大きくなります。先に「遠目のシルエット」を決めてから細部へ進んでください。
 
 ---
 
@@ -471,6 +526,69 @@ Warning: 14 block(s) added at negative coordinates on structure layer.
 
 ## 8. 発展パターン
 
+### 対称建築の作り方
+
+宮殿・城・寺院のような左右対称建築は、中央線を先に決めてから片側だけ作るのが基本です。
+
+```bash
+# 左半分だけ作ったあと、右半分へ鏡映
+boxel mirror palace.boxel.json \
+  --x1 0 --y1 0 --z1 0 \
+  --x2 24 --y2 30 --z2 40 \
+  --axis x --origin 24.5 --json
+```
+
+ポイント:
+- 中央線がブロック列の真ん中なら `origin` は整数
+- 中央線が 2 列の間なら `origin` は `.5`
+- 先に中央塔だけ作っておくと、左右の翼棟サイズを合わせやすい
+
+### 反復パーツの作り方
+
+窓列、列柱、胸壁のような反復パーツは `copy` を使います。
+
+```bash
+# 2x3 の窓を 6 個並べる
+boxel copy facade.boxel.json \
+  --x1 6 --y1 5 --z1 0 \
+  --x2 7 --y2 7 --z2 0 \
+  --dx 4 --dy 0 --dz 0 --repeat 5 --json
+```
+
+`copy` は毎回「元の選択範囲」から複製します。1 回目のコピー結果をさらにコピーするのではなく、同じ間隔で N 個並べたいときに使ってください。
+
+### 部品を合成する (`place`)
+
+土台・中央塔・左右の塔を別々のファイルで作って、最後に 1 つへ合成できます。
+
+```bash
+# 空の土台に中央塔を配置
+boxel place castle.boxel.json \
+  --source center_tower.boxel.json \
+  --x 24 --y 0 --z 18 \
+  --collision error --json
+
+# 左右の塔をそれぞれ配置
+boxel place castle.boxel.json \
+  --source side_tower.boxel.json \
+  --x 10 --y 0 --z 20 \
+  --collision ours --json
+
+boxel place castle.boxel.json \
+  --source side_tower.boxel.json \
+  --x 38 --y 0 --z 20 \
+  --collision ours --json
+```
+
+`--collision` の意味:
+- `error`: 既存ブロックと 1 つでも重なったら失敗
+- `ours`: target 側を優先し、重なった source ブロックは置かない
+- `theirs`: source 側を優先し、重なった target ブロックを置き換える
+
+`--include structure|scaffold|all` で、source のどのレイヤーを持ってくるか選べます。既定値は `all` です。
+`--rotate-y 90|180|270` で source をローカル原点まわりに回転できます。`90` は `(x,z) -> (-z,x)` です。
+`--mirror x|z` は source をローカル原点に対して反転します。
+
 ### 斜め屋根の作り方
 
 Y 層ごとに `fill` の範囲を1ずつ縮めることで、ピラミッド型の斜め屋根を作れます。
@@ -665,7 +783,7 @@ boxel render pond.boxel.json --y 0
 boxel validate pond.boxel.json --json
 ```
 
-### 9.5 `surface` — パラメトリック曲面
+### 9.8 `surface` — パラメトリック曲面
 
 パラメトリック曲面 S(u,v) をボクセル座標列に変換して書き込みます。
 
