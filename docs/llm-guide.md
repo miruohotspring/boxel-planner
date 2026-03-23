@@ -80,6 +80,20 @@ boxel <command>
 - X は東西、Z は南北
 - 座標はすべて整数
 
+### 推奨座標規約【重要】
+
+ファイル形式そのものは絶対座標ですが、建築タスクでは次の規約を標準にしてください。
+
+- `x,z`: 建物の中心を `(0,0)` に置く
+- `y`: 建物の一番下の床を `0` に置く
+- 部品ファイルも同様に、`place` で置きたい基準点を `(0,0,0)` に寄せる
+
+例:
+- 幅 49 の塔: `x = -24 .. 24` に置くと中心が `0`
+- 幅 48 の建物: `x = -24 .. 23` または `x = -23 .. 24` のように原点付近へ寄せる
+
+偶数幅では中心線が `0.5` ずれるため、`0` に中心ブロックは置けません。その場合でも「原点の近くに中心線が来る」ように配置してください。
+
 ### カラー指定
 
 - `#RRGGBB` 形式のみ（例: `#888888`、`#8B4513`）
@@ -98,26 +112,28 @@ boxel init myhouse --json
 # => { "ok": true, "data": { "file": "myhouse.boxel.json", ... } }
 ```
 
+`init` 直後は空ファイルなので原点は未確定です。最初の床や中心塔を置くときに、上の推奨座標規約に合わせて座標を決めてください。
+
 ### Step 2: `fill` や `add` で構造を作る
 
 ```bash
 # 範囲を一括で埋める（最も多用するコマンド）
-boxel fill myhouse.boxel.json --x1 0 --y1 0 --z1 0 --x2 9 --y2 0 --z2 7 --color "#8B4513"
+boxel fill myhouse.boxel.json --x1 -4 --y1 0 --z1 -3 --x2 4 --y2 0 --z2 3 --color "#8B4513"
 
 # 外周のみ（--hollow で壁・箱型を作る）
-boxel fill myhouse.boxel.json --x1 0 --y1 1 --z1 0 --x2 9 --y2 5 --z2 7 --color "#8B4513" --hollow
+boxel fill myhouse.boxel.json --x1 -4 --y1 1 --z1 -3 --x2 4 --y2 5 --z2 3 --color "#8B4513" --hollow
 
 # 外周のうち側面のみ（天井・床なし）→ 城壁や単層の外周リングに使う
-boxel fill myhouse.boxel.json --x1 0 --y1 1 --z1 0 --x2 9 --y2 5 --z2 7 --color "#8B4513" --hollow --no-cap
+boxel fill myhouse.boxel.json --x1 -4 --y1 1 --z1 -3 --x2 4 --y2 5 --z2 3 --color "#8B4513" --hollow --no-cap
 
 # ストライプ fill（X方向: 2置いて1空け → 胸壁パターンなど）
 boxel fill wall.boxel.json --x1 0 --y1 10 --z1 0 --x2 49 --y2 10 --z2 0 --color "#888888" --step-x 2 --gap-x 1
 
 # 単体ブロックを追加
-boxel add myhouse.boxel.json --x 4 --y 3 --z 0 --color "#ADD8E6"
+boxel add myhouse.boxel.json --x 0 --y 3 --z -3 --color "#ADD8E6"
 
 # 単体ブロックを削除（窓穴など）
-boxel remove myhouse.boxel.json --x 3 --y 2 --z 0
+boxel remove myhouse.boxel.json --x -1 --y 2 --z -3
 ```
 
 > **上書き挙動について:** `fill` と `add` は既存ブロックを上書きします。色を変更したいだけなら `remove` は不要です。直接 `fill` を実行すれば色が更新されます。
@@ -163,6 +179,13 @@ boxel copy castle.boxel.json \
 `mirror --origin` は整数だけでなく `.5` も使えます。たとえば `--axis x --origin 24.5` は X=24 と X=25 の間を鏡面にします。
 `place` は source 側のローカル原点 `(0,0,0)` を target 側の `(--x, --y, --z)` に合わせて配置します。
 `place` の変換順は `mirror -> rotate-y -> translate` です。
+
+既存ファイルをこの規約へ寄せたいときは `recenter` を使います。
+
+```bash
+boxel recenter castle.boxel.json --json
+# => structure の底面 Y が 0 になり、XZ 中心が原点付近へ移動する
+```
 
 ### Step 3: 形状を確認する【重要】
 
@@ -453,9 +476,11 @@ Y=2 (structure: 16, scaffold: 0)
 
 ## 7. LLM が陥りやすい失敗パターンと対策
 
-### 座標を負にしてしまう
+### 負の x,z を避けようとして形が崩れる
 
-`init` 後は必ず `x=0, y=0, z=0` 基点で設計してください。structure のブロックは非負座標から始めるのが基本です（scaffold は自動生成時に負座標になることがあります）。
+推奨座標規約では、`x,z` は建物中心が原点付近に来るように置くため、負座標になって構いません。特に左右対称の建物や `place` 用の部品では、負の `x,z` は普通に発生します。
+
+注意すべきなのは `y` だけです。床基準を `y=0` にそろえる前提なので、structure のブロックが `y<0` に出ると警告が出ます。
 
 ### fill の x1 > x2 になる
 
@@ -512,15 +537,15 @@ boxel fill castle.boxel.json --x1 0 --y1 13 --z1 0 --x2 49 --y2 14 --z2 49 --hol
 
 `--no-cap` は多層の場合も有効です（壁だけ作り、天井・床は別のコマンドで後付けできます）。
 
-### 曲線コマンドで負座標ブロックが生成される
+### 曲線コマンドで y<0 のブロックが生成される
 
-`circle` / `cylinder` / `sphere` / `ellipse` / `surface` は中心 + 半径で計算するため、中心が端に近いと負座標にブロックが出る場合があります。structure レイヤーに負座標ブロックが生成された場合は自動で警告が出ます。
+`circle` / `cylinder` / `sphere` / `ellipse` / `surface` は中心 + 半径で計算するため、意図せず structure のブロックが `y<0` に出る場合があります。負の `x,z` は問題ありませんが、`y<0` は床より下に潜るため自動で警告が出ます。
 
 ```
-Warning: 14 block(s) added at negative coordinates on structure layer.
+Warning: 14 block(s) added below Y=0 on structure layer. Consider adjusting height or origin.
 ```
 
-この場合は中心座標を半径分以上内側に移動してください（例: 半径 4 なら cx/cz は 4 以上）。
+この場合は `cy` や高さ方向の開始位置を見直してください。例えば半径 4 の球なら、少なくとも `cy=4` 以上にすると底面が `y=0` 未満へはみ出しません。
 
 ---
 

@@ -32,6 +32,13 @@ LLM（Claude / Codex など）が操作できる CLI と、設計図をグラフ
 
 右手系 XYZ。Y が高さ方向。原点は構造物の任意の基準点。
 
+### 推奨座標規約
+
+- `x,z`: 建物の中心を `(0,0)` に置く
+- `y`: 一番下の床を `0` に置く
+- 奇数幅の建物は中心ブロックを `x=0` / `z=0` に置ける
+- 偶数幅の建物は中心線が `0.5` ずれるため、`-24..23` のように原点付近へ寄せる
+
 ### スキーマ
 
 ```jsonc
@@ -142,6 +149,9 @@ boxel place <file> \
   --x <n> --y <n> --z <n> \
   [--collision <ours|theirs|error>] \
   [--rotate-y <0|90|180|270>] [--mirror <x|z>]
+
+# 設計図を XZ 中心 / 底面 Y=0 に寄せる
+boxel recenter <file>
 
 # 足場を自動生成（外周フレーム + 柱）
 boxel scaffold generate <file> [--margin <n>]

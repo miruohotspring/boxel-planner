@@ -38,7 +38,7 @@ export function printError(message: string, opts: OutputOptions): never {
   process.exit(1);
 }
 
-/** shape コマンドで structure レイヤーに負座標ブロックが置かれたとき stderr へ警告する */
+/** structure レイヤーに負の Y 座標ブロックが追加されたとき stderr へ警告する */
 export function warnNegativeCoords(
   posMap: ReadonlyMap<string, { x: number; y: number; z: number }>,
   prevKeys: ReadonlySet<string>,
@@ -46,11 +46,11 @@ export function warnNegativeCoords(
 ): void {
   let count = 0;
   for (const [key, b] of posMap) {
-    if (!prevKeys.has(key) && (b.x < 0 || b.y < 0 || b.z < 0)) count++;
+    if (!prevKeys.has(key) && b.y < 0) count++;
   }
   if (count > 0) {
     console.warn(
-      `Warning: ${count} block(s) added at negative coordinates on ${layer} layer. Consider adjusting center/radius.`
+      `Warning: ${count} block(s) added below Y=0 on ${layer} layer. Consider adjusting height or origin.`
     );
   }
 }

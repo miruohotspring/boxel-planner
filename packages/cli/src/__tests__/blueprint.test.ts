@@ -8,6 +8,7 @@ import {
   mirrorBlock,
   normalizeRange,
   placeBlueprintIntoTarget,
+  recenterBlueprint,
   rotateBlockY,
   summarizeBounds,
   transformBlockForPlacement,
@@ -270,6 +271,30 @@ describe("lib/blueprint", () => {
     expect(result.blueprint.structure).toEqual([
       { x: 10, y: 0, z: 12, color: "#AAAAAA" },
       { x: 9, y: 0, z: 12, color: "#BBBBBB" },
+    ]);
+  });
+
+  it("recenterBlueprint: XZ 中心と底面 Y を揃える", () => {
+    const result = recenterBlueprint({
+      version: "1.0",
+      name: "shifted",
+      bounds: { min: { x: 10, y: 5, z: 20 }, max: { x: 14, y: 9, z: 24 } },
+      structure: [
+        { x: 10, y: 5, z: 20, color: "#AAAAAA" },
+        { x: 14, y: 9, z: 24, color: "#BBBBBB" },
+      ],
+      scaffold: [
+        { x: 9, y: 4, z: 19, color: "#FF8C00" },
+      ],
+    });
+
+    expect(result.offset).toEqual({ x: -12, y: -5, z: -22 });
+    expect(result.blueprint.structure).toEqual([
+      { x: -2, y: 0, z: -2, color: "#AAAAAA" },
+      { x: 2, y: 4, z: 2, color: "#BBBBBB" },
+    ]);
+    expect(result.blueprint.scaffold).toEqual([
+      { x: -3, y: -1, z: -3, color: "#FF8C00" },
     ]);
   });
 });

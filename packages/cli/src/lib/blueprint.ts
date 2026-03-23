@@ -35,6 +35,11 @@ export interface PlacementResult {
   stats: PlacementStats;
 }
 
+export interface RecenterResult {
+  blueprint: Blueprint;
+  offset: { x: number; y: number; z: number };
+}
+
 export function normalizeRange(range: {
   x1: number;
   y1: number;
@@ -324,5 +329,45 @@ export function placeBlueprintIntoTarget(
       collisions,
       skipped,
     },
+  };
+}
+
+export function recenterBlueprint(blueprint: Blueprint): RecenterResult {
+  const structureBounds = computeBounds(blueprint.structure);
+  if (!structureBounds) {
+    return {
+      blueprint,
+      offset: { x: 0, y: 0, z: 0 },
+    };
+  }
+
+  const offset = {
+    x: -Math.round((structureBounds.min.x + structureBounds.max.x) / 2),
+    y: -structureBounds.min.y,
+    z: -Math.round((structureBounds.min.z + structureBounds.max.z) / 2),
+  };
+
+  const structure = blueprint.structure.map((block) => ({
+    ...block,
+    x: block.x + offset.x,
+    y: block.y + offset.y,
+    z: block.z + offset.z,
+  }));
+  const scaffold = blueprint.scaffold.map((block) => ({
+    ...block,
+    x: block.x + offset.x,
+    y: block.y + offset.y,
+    z: block.z + offset.z,
+  }));
+  const bounds = computeBounds([...structure, ...scaffold]) ?? blueprint.bounds;
+
+  return {
+    blueprint: {
+      ...blueprint,
+      structure,
+      scaffold,
+      bounds,
+    },
+    offset,
   };
 }
