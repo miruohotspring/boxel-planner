@@ -107,6 +107,12 @@ boxel fill myhouse.boxel.json --x1 0 --y1 0 --z1 0 --x2 9 --y2 0 --z2 7 --color 
 # 外周のみ（--hollow で壁・箱型を作る）
 boxel fill myhouse.boxel.json --x1 0 --y1 1 --z1 0 --x2 9 --y2 5 --z2 7 --color "#8B4513" --hollow
 
+# 外周のうち側面のみ（天井・床なし）→ 城壁や単層の外周リングに使う
+boxel fill myhouse.boxel.json --x1 0 --y1 1 --z1 0 --x2 9 --y2 5 --z2 7 --color "#8B4513" --hollow --no-cap
+
+# ストライプ fill（X方向: 2置いて1空け → 胸壁パターンなど）
+boxel fill wall.boxel.json --x1 0 --y1 10 --z1 0 --x2 49 --y2 10 --z2 0 --color "#888888" --step-x 2 --gap-x 1
+
 # 単体ブロックを追加
 boxel add myhouse.boxel.json --x 4 --y 3 --z 0 --color "#ADD8E6"
 
@@ -114,9 +120,15 @@ boxel add myhouse.boxel.json --x 4 --y 3 --z 0 --color "#ADD8E6"
 boxel remove myhouse.boxel.json --x 3 --y 2 --z 0
 ```
 
-### Step 3: `render --y <n>` で断面を確認【重要】
+> **上書き挙動について:** `fill` と `add` は既存ブロックを上書きします。色を変更したいだけなら `remove` は不要です。直接 `fill` を実行すれば色が更新されます。
+>
+> 出力の `added` は新規ブロック数、`updated` は色が変わった既存ブロック数です。色変更だけのとき `added: 0, updated: N` と表示されますが、ファイルは正常に更新されています。
 
-**render は LLM がテキストで現状を把握できる唯一の手段です。必ず数層ごとに実行して確認してください。**
+### Step 3: 形状を確認する【重要】
+
+**テキストでの状態確認は render / ortho だけです。必ず確認してから次のステップへ進んでください。**
+
+#### `render --y <n>` — 1断面を確認
 
 ```bash
 boxel render myhouse.boxel.json --y 0
@@ -133,6 +145,54 @@ Y=0 (structure: 80, scaffold: 0)
    7 ■■■■■■■■■■
      0    5
 ```
+
+色の確認をしたいときは `--color` を使います:
+
+```bash
+boxel render myhouse.boxel.json --y 0 --color
+# → グリッド内が a/b/c... 記号になり、下部に色の対応表を表示
+```
+
+#### `ortho` — 3方向を一発で確認【全体把握に最適】
+
+1断面ずつでは全体形状が掴みにくい場合（特に曲面やドームなど）は `ortho` を使うと TOP/FRONT/SIDE の3方向が一度に確認できます。
+
+```bash
+boxel ortho myhouse.boxel.json
+```
+
+出力例:
+
+```
+── TOP (Y↓) ───────   ── FRONT (Z↑) ─────   ── SIDE (X→) ──────
+     0    5                0    5                0    5
+  0 ···■■■···           0 ·■■■■■■■·           0 ·■■■■■■■·
+  1 ··■···■··           1 ■·······■           1 ■·······■
+  ...
+```
+
+Y 座標でフィルターしたいときは `--y-min` を使います（床だけで全面 ■ になる場合などに有効）:
+
+```bash
+boxel ortho myhouse.boxel.json --y-min 1
+# → Y=0 の床を除外して構造を確認
+```
+
+色の確認をしたいときは `--verbose` を使います:
+
+```bash
+boxel ortho myhouse.boxel.json --verbose
+# → グリッド内が a/b/c... 記号になり、下部に色の対応表を表示
+# 例:
+# Legend:
+#   a = #8B4513  ×240 (structure)
+#   b = #4A2F08  ×80  (structure)
+```
+
+各投影方向の代表色は以下のルールで選ばれます:
+- **TOP**: その (X,Z) 位置で最も Y が高いブロックの色
+- **FRONT**: その (X,Y) 位置で最も Z が小さいブロックの色
+- **SIDE**: その (Z,Y) 位置で最も X が小さいブロックの色
 
 ### Step 4: `scaffold generate` で足場を生成
 
@@ -362,9 +422,50 @@ boxel fill f.boxel.json --x1 0 --y1 0 --z1 0 --x2 5 --y2 0 --z2 4 --color "#8888
 
 テキストの状態確認は `render` だけです。数層ごとに必ず確認し、意図した形になっているかを検証しながら作業してください。特に `--hollow` で壁を作った後や、`remove` で穴を開けた後は必ず確認します。
 
+### 色変更のために remove → fill の2ステップを踏んでしまう
+
+`fill` は既存ブロックを上書きするため、色変更に `remove` は不要です。
+
+```bash
+# NG: 不要な remove
+boxel remove myhouse.boxel.json --x1 0 --y1 0 --z1 0 --x2 3 --y2 3 --z2 3
+boxel fill   myhouse.boxel.json --x1 0 --y1 0 --z1 0 --x2 3 --y2 3 --z2 3 --color "#888888"
+
+# OK: fill だけで上書き
+boxel fill myhouse.boxel.json --x1 0 --y1 0 --z1 0 --x2 3 --y2 3 --z2 3 --color "#888888"
+```
+
+また `--dry-run` で確認した際に `added: 0` と表示されても、それは「新規ブロックがない」だけであり、色の更新は実際には行われます。
+
 ### --hollow を忘れて内部まで埋めてしまう
 
 壁・箱型の建物を作る際は `--hollow` を付けないと内部まで全部埋まります。`fill` 後に `render` で確認するとすぐ気づけます。
+
+### --hollow を単層（y1=y2）で使うと全面埋まる
+
+`--hollow` は「6面の外周シェル」を生成します。単層（y1=y2）では上下面が常に境界と判定されるため、全面が埋まってしまいます。
+
+外周リング（壁のみ、天井・床なし）が欲しいときは `--no-cap` を追加してください。
+
+```bash
+# NG: 単層で全面埋まる
+boxel fill castle.boxel.json --x1 0 --y1 13 --z1 0 --x2 49 --y2 14 --z2 49 --hollow
+
+# OK: 側面のみ（天井・床なし）
+boxel fill castle.boxel.json --x1 0 --y1 13 --z1 0 --x2 49 --y2 14 --z2 49 --hollow --no-cap
+```
+
+`--no-cap` は多層の場合も有効です（壁だけ作り、天井・床は別のコマンドで後付けできます）。
+
+### 曲線コマンドで負座標ブロックが生成される
+
+`circle` / `cylinder` / `sphere` / `ellipse` / `surface` は中心 + 半径で計算するため、中心が端に近いと負座標にブロックが出る場合があります。structure レイヤーに負座標ブロックが生成された場合は自動で警告が出ます。
+
+```
+Warning: 14 block(s) added at negative coordinates on structure layer.
+```
+
+この場合は中心座標を半径分以上内側に移動してください（例: 半径 4 なら cx/cz は 4 以上）。
 
 ---
 
@@ -392,6 +493,27 @@ boxel fill house.boxel.json --x1 2 --y1 7 --z1 2 --x2 7 --y2 7 --z2 7 --color "#
 boxel render house.boxel.json --y 5
 boxel render house.boxel.json --y 6
 boxel render house.boxel.json --y 7
+```
+
+### ストライプ fill（繰り返しパターン）
+
+胸壁（merlon）や格子窓など「N置いてM空ける」繰り返しパターンは `--step-x/--gap-x` と `--step-z/--gap-z` で一発で作れます。
+
+```bash
+# 城壁の胸壁: X方向に2ブロック置いて1ブロック空ける
+boxel fill castle.boxel.json \
+  --x1 0 --y1 15 --z1 0 --x2 49 --y2 15 --z2 0 \
+  --color "#888888" --step-x 2 --gap-x 1
+
+# Z方向ストライプ（縦縞）
+boxel fill floor.boxel.json \
+  --x1 0 --y1 0 --z1 0 --x2 9 --y2 0 --z2 9 \
+  --color "#D2B48C" --step-z 2 --gap-z 2
+
+# X・Z 両方を同時に指定すると格子パターン
+boxel fill lattice.boxel.json \
+  --x1 0 --y1 0 --z1 0 --x2 9 --y2 0 --z2 9 \
+  --color "#888888" --step-x 1 --gap-x 1 --step-z 1 --gap-z 1
 ```
 
 ---
@@ -543,7 +665,114 @@ boxel render pond.boxel.json --y 0
 boxel validate pond.boxel.json --json
 ```
 
-### 9.8 render で確認する手順
+### 9.5 `surface` — パラメトリック曲面
+
+パラメトリック曲面 S(u,v) をボクセル座標列に変換して書き込みます。
+
+#### 共通オプション
+
+| オプション | 説明 | デフォルト |
+|---|---|---|
+| `--type <type>` | 曲面タイプ（必須）: `torus` / `paraboloid` / `wave` / `gaussian` / `saddle` | — |
+| `--color <#RRGGBB>` | ブロックカラー（必須） | — |
+| `--cx <n>` | 中心X座標 | 0 |
+| `--cy <n>` | 中心Y座標 | 0 |
+| `--cz <n>` | 中心Z座標 | 0 |
+| `--layer <structure\|scaffold>` | 対象レイヤー | structure |
+| `--samples <n>` | サンプル数 N（N×N でサンプリング） | 80 |
+| `--json` | JSON形式出力 | — |
+
+#### `torus`（ドーナツ形）
+
+```
+u, v ∈ [0, 2π]
+x = (R + r·cos u)·cos v
+y = r·sin u
+z = (R + r·cos u)·sin v
+```
+
+```bash
+boxel surface torus.json --type torus --cx 5 --cy 5 --cz 5 --R 4 --r 1.5 --color "#888888"
+```
+
+| オプション | 説明 |
+|---|---|
+| `--R <n>` | 大半径（必須） |
+| `--r <n>` | 小半径（必須） |
+
+#### `paraboloid`（放物面・お椀形）
+
+```
+u, v ∈ [-range, range]
+x = u,  y = a·u² + b·v²,  z = v
+```
+
+```bash
+boxel surface bowl.json --type paraboloid --cx 5 --cy 0 --cz 5 --a 0.4 --b 0.4 --range 5 --color "#8B4513"
+```
+
+| オプション | 説明 | デフォルト |
+|---|---|---|
+| `--a <n>` | a 係数（必須） | — |
+| `--b <n>` | b 係数（必須） | — |
+| `--range <n>` | u/v の範囲 | 5 |
+
+#### `wave`（波面）
+
+```
+u, v ∈ [-range, range]
+x = u,  y = amplitude · sin(kx·u) · sin(kz·v),  z = v
+```
+
+```bash
+boxel surface wave.json --type wave --cx 0 --cy 5 --cz 0 --amplitude 3 --kx 0.6 --kz 0.6 --range 10 --color "#4a90d9"
+```
+
+| オプション | 説明 | デフォルト |
+|---|---|---|
+| `--amplitude <n>` | 振幅（必須） | — |
+| `--kx <n>` | x 周波数（必須） | — |
+| `--kz <n>` | z 周波数（必須） | — |
+| `--range <n>` | u/v の範囲 | 10 |
+
+#### `gaussian`（ガウシアン丘）
+
+```
+u, v ∈ [-range, range]
+x = u,  y = amplitude · exp(-(u²/(2·σx²) + v²/(2·σz²))),  z = v
+```
+
+```bash
+boxel surface hill.json --type gaussian --cx 5 --cy 0 --cz 5 --amplitude 6 --sigma-x 3 --sigma-z 3 --range 8 --color "#5A7A4A"
+```
+
+| オプション | 説明 | デフォルト |
+|---|---|---|
+| `--amplitude <n>` | 高さ（必須） | — |
+| `--sigma-x <n>` | x 広がり（必須） | — |
+| `--sigma-z <n>` | z 広がり（必須） | — |
+| `--range <n>` | u/v の範囲 | 8 |
+
+#### `saddle`（鞍面・双曲放物面）
+
+```
+u, v ∈ [-range, range]
+x = u,  y = a·u² - b·v²,  z = v
+```
+
+```bash
+boxel surface saddle.json --type saddle --cx 5 --cy 5 --cz 5 --a 0.3 --b 0.3 --range 5 --color "#888888"
+```
+
+| オプション | 説明 | デフォルト |
+|---|---|---|
+| `--a <n>` | a 係数（必須） | — |
+| `--b <n>` | b 係数（必須） | — |
+| `--range <n>` | u/v の範囲 | 5 |
+
+---
+
+### 9.9 render で確認する手順
 
 曲線コマンド実行後は `render` で形状を確認してください。
 
@@ -558,4 +787,9 @@ boxel render file.boxel.json --y 5
 boxel render file.boxel.json --y 5   # 中心（最大径）
 boxel render file.boxel.json --y 8   # 上部（縮まっているはず）
 boxel render file.boxel.json --y 2   # 下部（縮まっているはず）
+
+# surface の場合（曲面の形状を断面ごとに確認）
+boxel render file.boxel.json --y 5   # 中心層付近
+boxel render file.boxel.json --y 8   # 高い層
+boxel render file.boxel.json --y 2   # 低い層
 ```

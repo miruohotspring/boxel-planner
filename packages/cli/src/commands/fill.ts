@@ -8,6 +8,7 @@ import {
 import { readBlueprint, writeBlueprint } from "../lib/file.js";
 import { printData, printError, type OutputOptions } from "../lib/output.js";
 
+
 export function registerFill(program: Command): void {
   program
     .command("fill <file>")
@@ -20,6 +21,11 @@ export function registerFill(program: Command): void {
     .requiredOption("--z2 <n>", "終了Z座標", Number)
     .requiredOption("--color <#RRGGBB>", "ブロックカラー (#RRGGBB)")
     .option("--hollow", "外周のみ埋める（中空）")
+    .option("--no-cap", "--hollow 使用時にY方向の上下面を塞がない（壁のみ生成）")
+    .option("--step-x <n>", "X方向ストライプ: 配置するブロック数", Number)
+    .option("--gap-x <n>", "X方向ストライプ: 空けるブロック数（--step-x と併用）", Number)
+    .option("--step-z <n>", "Z方向ストライプ: 配置するブロック数", Number)
+    .option("--gap-z <n>", "Z方向ストライプ: 空けるブロック数（--step-z と併用）", Number)
     .option("--layer <layer>", "対象レイヤー (structure または scaffold)", "structure")
     .option("--dry-run", "ファイルを変更せず、追加されるブロック数を出力する")
     .option("--json", "JSON形式で結果を出力する")
@@ -35,6 +41,11 @@ export function registerFill(program: Command): void {
           z2: number;
           color: string;
           hollow?: boolean;
+          cap?: boolean; // commander: --no-cap → cap=false, デフォルト true
+          stepX?: number;
+          gapX?: number;
+          stepZ?: number;
+          gapZ?: number;
           layer: string;
           dryRun?: boolean;
           json?: boolean;
@@ -73,26 +84,39 @@ export function registerFill(program: Command): void {
         }
 
         let added = 0;
+        let updated = 0;
         for (let x = minX; x <= maxX; x++) {
+          // X方向ストライプフィルター
+          if (opts.stepX !== undefined && opts.gapX !== undefined) {
+            const period = opts.stepX + opts.gapX;
+            if (period > 0 && (x - minX) % period >= opts.stepX) continue;
+          }
           for (let y = minY; y <= maxY; y++) {
             for (let z = minZ; z <= maxZ; z++) {
+              // Z方向ストライプフィルター
+              if (opts.stepZ !== undefined && opts.gapZ !== undefined) {
+                const period = opts.stepZ + opts.gapZ;
+                if (period > 0 && (z - minZ) % period >= opts.stepZ) continue;
+              }
               if (opts.hollow) {
-                // 外周判定: 少なくとも1軸が境界上
-                const onBorder =
-                  x === minX || x === maxX ||
-                  y === minY || y === maxY ||
-                  z === minZ || z === maxZ;
-                if (!onBorder) continue;
+                const onSide = x === minX || x === maxX || z === minZ || z === maxZ;
+                const onCap = y === minY || y === maxY;
+                // --no-cap: opts.cap===false のとき側面のみ（Y上下面を除外）
+                const noCap = opts.cap === false;
+                if (noCap ? !onSide : (!onSide && !onCap)) continue;
               }
               const block: Block = { x, y, z, color: opts.color };
               const key = positionKey(block);
               if (!posMap.has(key)) added++;
+              else updated++;
               posMap.set(key, block);
             }
           }
         }
 
-        const hollowLabel = opts.hollow ? " [hollow]" : "";
+        const hollowLabel = opts.hollow
+          ? opts.cap === false ? " [hollow, no-cap]" : " [hollow]"
+          : "";
         const rangeLabel = `(${minX},${minY},${minZ})→(${maxX},${maxY},${maxZ})`;
 
         if (opts.dryRun) {
@@ -101,14 +125,16 @@ export function registerFill(program: Command): void {
             {
               ok: true,
               dryRun: true,
-              count: added,
+              added,
+              updated,
               layer,
               range: { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } },
               hollow: opts.hollow ?? false,
+              noCap: opts.cap === false,
             },
             outputOpts,
             () =>
-              `[dry-run] Would add ${added} block(s) to ${layer} ${rangeLabel}${hollowLabel}.`
+              `[dry-run] Would add ${added} new + update ${updated} existing block(s) in ${layer} ${rangeLabel}${hollowLabel}.`
           );
           return;
         }
@@ -122,14 +148,14 @@ export function registerFill(program: Command): void {
         const allUpdated = [...updatedLayer.structure, ...updatedLayer.scaffold];
         const newBounds = computeBounds(allUpdated) ?? blueprint.bounds;
 
-        const updated: Blueprint = {
+        const updatedBlueprint: Blueprint = {
           ...blueprint,
           ...updatedLayer,
           bounds: newBounds,
         };
 
         try {
-          writeBlueprint(file, updated);
+          writeBlueprint(file, updatedBlueprint);
         } catch (e) {
           printError(e instanceof Error ? e.message : String(e), outputOpts);
         }
@@ -139,11 +165,13 @@ export function registerFill(program: Command): void {
             layer,
             range: { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } },
             hollow: opts.hollow ?? false,
+            noCap: opts.cap === false,
             added,
+            updated,
           },
           outputOpts,
           () =>
-            `Filled ${added} block(s) in ${layer} from (${minX},${minY},${minZ}) to (${maxX},${maxY},${maxZ})${opts.hollow ? " [hollow]" : ""}.`
+            `Filled ${added} new + ${updated} updated block(s) in ${layer} from (${minX},${minY},${minZ}) to (${maxX},${maxY},${maxZ})${hollowLabel}.`
         );
       }
     );

@@ -14,6 +14,7 @@ export default function App() {
 
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const [showScaffold, setShowScaffold] = useState(true);
+  const [showOutline, setShowOutline] = useState(false);
   const [currentY, setCurrentY] = useState(0);
   const [importError, setImportError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -95,9 +96,11 @@ export default function App() {
       <Toolbar
         viewMode={viewMode}
         showScaffold={showScaffold}
+        showOutline={showOutline}
         blueprint={blueprint}
         onViewModeChange={setViewMode}
         onToggleScaffold={() => setShowScaffold((v) => !v)}
+        onToggleOutline={() => setShowOutline((v) => !v)}
         onImport={handleImport}
         onImportError={handleImportError}
         importError={importError}
@@ -115,7 +118,7 @@ export default function App() {
         {/* ビューエリア */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
           {viewMode === "3d" ? (
-            <View3D blueprint={blueprint} showScaffold={showScaffold} />
+            <View3D blueprint={blueprint} showScaffold={showScaffold} showOutline={showOutline} />
           ) : (
             <View2D
               blueprint={blueprint}

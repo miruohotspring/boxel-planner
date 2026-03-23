@@ -14,6 +14,8 @@ import { registerCircle } from "./commands/circle.js";
 import { registerCylinder } from "./commands/cylinder.js";
 import { registerSphere } from "./commands/sphere.js";
 import { registerEllipse } from "./commands/ellipse.js";
+import { registerSurface } from "./commands/surface.js";
+import { registerOrtho } from "./commands/ortho.js";
 
 const program = new Command();
 
@@ -36,5 +38,7 @@ registerCircle(program);
 registerCylinder(program);
 registerSphere(program);
 registerEllipse(program);
+registerSurface(program);
+registerOrtho(program);
 
 program.parse();

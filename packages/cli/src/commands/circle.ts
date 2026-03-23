@@ -6,7 +6,7 @@ import {
   type Blueprint,
 } from "@boxel-planner/schema";
 import { readBlueprint, writeBlueprint } from "../lib/file.js";
-import { printData, printError, type OutputOptions } from "../lib/output.js";
+import { printData, printError, warnNegativeCoords, type OutputOptions } from "../lib/output.js";
 
 export function registerCircle(program: Command): void {
   program
@@ -57,6 +57,7 @@ export function registerCircle(program: Command): void {
 
         const layer = opts.layer as "structure" | "scaffold";
         const existingBlocks = [...blueprint[layer]];
+        const prevKeys = new Set(existingBlocks.map((b) => positionKey(b)));
         const posMap = new Map<string, Block>();
         for (const b of existingBlocks) {
           posMap.set(positionKey(b), b);
@@ -91,6 +92,8 @@ export function registerCircle(program: Command): void {
             posMap.set(key, block);
           }
         }
+
+        if (layer === "structure") warnNegativeCoords(posMap, prevKeys, layer);
 
         const newBlocks = Array.from(posMap.values());
         const updatedLayer = layer === "structure"

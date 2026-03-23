@@ -5,9 +5,11 @@ import { importFromFile, exportBlueprint } from "../lib/importExport.ts";
 interface ToolbarProps {
   viewMode: "3d" | "2d";
   showScaffold: boolean;
+  showOutline: boolean;
   blueprint: Blueprint | null;
   onViewModeChange: (mode: "3d" | "2d") => void;
   onToggleScaffold: () => void;
+  onToggleOutline: () => void;
   onImport: (bp: Blueprint) => void;
   onImportError: (err: string) => void;
   importError: string | null;
@@ -16,9 +18,11 @@ interface ToolbarProps {
 export function Toolbar({
   viewMode,
   showScaffold,
+  showOutline,
   blueprint,
   onViewModeChange,
   onToggleScaffold,
+  onToggleOutline,
   onImport,
   onImportError,
   importError,
@@ -183,6 +187,15 @@ export function Toolbar({
         title="足場の表示切替"
       >
         足場: {showScaffold ? "ON" : "OFF"}
+      </button>
+
+      {/* Outline toggle */}
+      <button
+        style={showOutline ? btnActive : btnBase}
+        onClick={onToggleOutline}
+        title="輪郭線の表示切替"
+      >
+        輪郭線: {showOutline ? "ON" : "OFF"}
       </button>
 
       {/* Error message */}

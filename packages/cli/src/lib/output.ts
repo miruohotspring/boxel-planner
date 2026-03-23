@@ -38,6 +38,23 @@ export function printError(message: string, opts: OutputOptions): never {
   process.exit(1);
 }
 
+/** shape コマンドで structure レイヤーに負座標ブロックが置かれたとき stderr へ警告する */
+export function warnNegativeCoords(
+  posMap: ReadonlyMap<string, { x: number; y: number; z: number }>,
+  prevKeys: ReadonlySet<string>,
+  layer: string
+): void {
+  let count = 0;
+  for (const [key, b] of posMap) {
+    if (!prevKeys.has(key) && (b.x < 0 || b.y < 0 || b.z < 0)) count++;
+  }
+  if (count > 0) {
+    console.warn(
+      `Warning: ${count} block(s) added at negative coordinates on ${layer} layer. Consider adjusting center/radius.`
+    );
+  }
+}
+
 /** バリデーションエラーを出力して process.exit(1) する */
 export function printValidationErrors(
   errors: Array<{ path: string; message: string }>,

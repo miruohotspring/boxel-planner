@@ -70,12 +70,40 @@ function ScaffoldWireframe({ blocks, visible }: VoxelMeshProps) {
   );
 }
 
+/** 全ブロック用：黒ワイヤーフレーム輪郭線 */
+function BlockOutlineMesh({ blocks, visible }: VoxelMeshProps) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || blocks.length === 0) return;
+
+    const matrix = new THREE.Matrix4();
+    for (let i = 0; i < blocks.length; i++) {
+      const { x, y, z } = blocks[i];
+      matrix.setPosition(x, y, z);
+      mesh.setMatrixAt(i, matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [blocks]);
+
+  if (blocks.length === 0) return null;
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, blocks.length]} visible={visible}>
+      <boxGeometry args={[1.005, 1.005, 1.005]} />
+      <meshBasicMaterial color="#000000" wireframe />
+    </instancedMesh>
+  );
+}
+
 interface SceneProps {
   blueprint: Blueprint;
   showScaffold: boolean;
+  showOutline: boolean;
 }
 
-function Scene({ blueprint, showScaffold }: SceneProps) {
+function Scene({ blueprint, showScaffold, showOutline }: SceneProps) {
   const { structure, scaffold, bounds } = blueprint;
 
   // カメラの初期位置をboundsの中心に合わせる
@@ -103,6 +131,7 @@ function Scene({ blueprint, showScaffold }: SceneProps) {
 
       {/* 構造ブロック */}
       <VoxelMesh blocks={structure} visible={true} />
+      <BlockOutlineMesh blocks={structure} visible={showOutline} />
 
       {/* 足場ブロック（色 + 黄色枠線） */}
       <VoxelMesh blocks={scaffold} visible={showScaffold} />
@@ -155,9 +184,10 @@ function EmptyScene() {
 interface View3DProps {
   blueprint: Blueprint | null;
   showScaffold: boolean;
+  showOutline: boolean;
 }
 
-export function View3D({ blueprint, showScaffold }: View3DProps) {
+export function View3D({ blueprint, showScaffold, showOutline }: View3DProps) {
   return (
     <div style={{ width: "100%", height: "100%", background: "#0d1117" }}>
       <Canvas
@@ -189,7 +219,7 @@ export function View3D({ blueprint, showScaffold }: View3DProps) {
         style={{ background: "#0d1117" }}
       >
         {blueprint ? (
-          <Scene blueprint={blueprint} showScaffold={showScaffold} />
+          <Scene blueprint={blueprint} showScaffold={showScaffold} showOutline={showOutline} />
         ) : (
           <EmptyScene />
         )}
