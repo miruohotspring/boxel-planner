@@ -10,6 +10,7 @@ import os from "os";
 import type { Blueprint, Block } from "@boxel-planner/schema";
 import { positionKey, computeBounds } from "@boxel-planner/schema";
 import { readBlueprint, writeBlueprint } from "../lib/file.js";
+import { generateGableBlocks, generateRoofBlocks } from "../lib/primitives.js";
 
 // ============================================================
 // テスト用ヘルパー
@@ -522,6 +523,142 @@ describe("spire command logic", () => {
     const result = readBlueprint(fp);
     expect(result.bounds.min).toEqual({ x: -3, y: 4, z: -3 });
     expect(result.bounds.max).toEqual({ x: 3, y: 7, z: 3 });
+  });
+});
+
+// ============================================================
+// roof テスト
+// ============================================================
+
+describe("roof command logic", () => {
+  const COLOR = "#2F313A";
+
+  it("張り出し付き段屋根を生成できる", () => {
+    const blocks = generateRoofBlocks({
+      x1: -2,
+      z1: -1,
+      x2: 2,
+      z2: 1,
+      y: 10,
+      layers: 3,
+      color: COLOR,
+      overhangX: 1,
+      overhangZ: 2,
+      shrinkX: 1,
+      shrinkZ: 1,
+    });
+
+    const ys = new Set(blocks.map((block) => block.y));
+    expect(ys).toEqual(new Set([10, 11, 12]));
+  });
+
+  it("上層ほど footprint が小さくなる", () => {
+    const blocks = generateRoofBlocks({
+      x1: 0,
+      z1: 0,
+      x2: 4,
+      z2: 4,
+      y: 0,
+      layers: 2,
+      color: COLOR,
+      overhangX: 1,
+      overhangZ: 1,
+      shrinkX: 1,
+      shrinkZ: 1,
+    });
+
+    const lower = blocks.filter((block) => block.y === 0);
+    const upper = blocks.filter((block) => block.y === 1);
+    expect(lower.length).toBeGreaterThan(upper.length);
+  });
+
+  it("bounds が overhang を含む", () => {
+    const blocks = generateRoofBlocks({
+      x1: 2,
+      z1: 3,
+      x2: 4,
+      z2: 5,
+      y: 7,
+      layers: 1,
+      color: COLOR,
+      overhangX: 2,
+      overhangZ: 1,
+      shrinkX: 1,
+      shrinkZ: 1,
+    });
+    const bounds = computeBounds(blocks);
+    expect(bounds?.min).toEqual({ x: 0, y: 7, z: 2 });
+    expect(bounds?.max).toEqual({ x: 6, y: 7, z: 6 });
+  });
+});
+
+// ============================================================
+// gable テスト
+// ============================================================
+
+describe("gable command logic", () => {
+  const COLOR = "#C73A32";
+
+  it("north face に段状破風を生成できる", () => {
+    const blocks = generateGableBlocks({
+      face: "north",
+      center: 0,
+      base: -2,
+      y: 10,
+      width: 7,
+      height: 3,
+      depth: 3,
+      color: COLOR,
+      shrink: 1,
+      inset: 1,
+    });
+
+    const top = blocks.filter((block) => block.y === 12);
+    expect(top.every((block) => block.z <= -2)).toBe(true);
+    expect(top.length).toBeGreaterThan(0);
+  });
+
+  it("even width では .5 center を使って整数座標にできる", () => {
+    const blocks = generateGableBlocks({
+      face: "south",
+      center: 0.5,
+      base: 4,
+      y: 0,
+      width: 4,
+      height: 1,
+      depth: 2,
+      color: COLOR,
+      shrink: 1,
+      inset: 1,
+    });
+
+    expect(blocks).toEqual([
+      { x: -1, y: 0, z: 4, color: COLOR },
+      { x: -1, y: 0, z: 5, color: COLOR },
+      { x: 0, y: 0, z: 4, color: COLOR },
+      { x: 0, y: 0, z: 5, color: COLOR },
+      { x: 1, y: 0, z: 4, color: COLOR },
+      { x: 1, y: 0, z: 5, color: COLOR },
+      { x: 2, y: 0, z: 4, color: COLOR },
+      { x: 2, y: 0, z: 5, color: COLOR },
+    ]);
+  });
+
+  it("不正な center/width 組み合わせは例外", () => {
+    expect(() =>
+      generateGableBlocks({
+        face: "east",
+        center: 0,
+        base: 3,
+        y: 0,
+        width: 4,
+        height: 1,
+        depth: 1,
+        color: COLOR,
+        shrink: 1,
+        inset: 1,
+      })
+    ).toThrow(/Use a \.5 center/);
   });
 });
 

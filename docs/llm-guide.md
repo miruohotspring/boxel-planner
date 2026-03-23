@@ -88,6 +88,14 @@ boxel <command>
 - X は東西、Z は南北
 - 座標はすべて整数
 
+### 推奨スケール【重要】
+
+建築タスクでは、推奨規約として **`1 block = 1 meter`** とみなしてください。
+
+- ファイル形式自体は抽象座標のままです
+- ただし、実在建築の再現や「50x50x50 くらい」のような指示は、基本的に `50m 級` と読んで構いません
+- 例: 高さ 12m の門楼を作りたいなら、まず `y=0..11` 前後で考えます
+
 ### 推奨座標規約【重要】
 
 ファイル形式そのものは絶対座標ですが、建築タスクでは次の規約を標準にしてください。
@@ -205,7 +213,7 @@ boxel recenter castle.boxel.json --json
 
 ### Step 3: 形状を確認する【重要】
 
-**テキストでの状態確認は render / ortho だけです。必ず確認してから次のステップへ進んでください。**
+**テキストでの状態確認は render / ortho / check が中心です。必ず確認してから次のステップへ進んでください。**
 
 #### `render --y <n>` — 1断面を確認
 
@@ -249,6 +257,70 @@ boxel ortho myhouse.boxel.json
   1 ··■···■··           1 ■·······■           1 ■·······■
   ...
 ```
+
+実在建築の正面再現では、`FRONT` で立面、`SIDE` で屋根勾配と奥行きを確認すると詰めやすくなります。
+
+#### `ortho --mode coord` — 可視面の座標値で穴や段差を確認
+
+`solid` モードの `■` 表示では、シルエットは見えても「どの高さ/奥行きの面が見えているか」は分かりません。`coord` モードでは、各セルに見えている面の座標値を表示します。
+
+- `TOP`: 各 `(x,z)` で見えている最上面の `y`
+- `FRONT`: 各 `(x,y)` で手前に見える `z`
+- `SIDE`: 各 `(z,y)` で手前に見える `x`
+- 空白: その視線方向にブロックが存在しない
+
+```bash
+boxel ortho shuri.boxel.json --mode coord
+boxel ortho shuri.boxel.json --mode coord --view front
+boxel ortho shuri.boxel.json --mode coord --style braille --view top
+```
+
+値が周囲から急に飛ぶ場所は、吹き抜け、段差、開口の候補として読み取りやすくなります。
+巨大モデルでは `--view top|front|side` で1面だけに絞ると読みやすくなります。
+さらに全体傾向だけ素早く見たい場合は `--style braille` で 9 段階の点字ヒートマップにできます。
+
+#### `check` — サイズ制約を機械的に確認【仕上げ前に必須】
+
+`1 block = 1 meter` の規約で作っている場合、幅 50m 級に収まっているかを最後に `check` で検証します。
+
+```bash
+boxel check shuri.boxel.json --max-x 50 --max-y 35 --max-z 50
+```
+
+出力例:
+
+```text
+PASS: size constraints satisfied
+Target: structure
+Bounds: (-24, 0, -22) -> (24, 30, 21)
+Size:   49 x 31 x 44
+X: 49 <= 50  OK
+Y: 31 <= 35  OK
+Z: 44 <= 50  OK
+```
+
+足場込みで見たい場合は `--target all` を使います。
+
+#### `check-access` — 2点間の通り抜けを確認【門や内部導線の検証用】
+
+空間内の2点の間に、ブロックを貫通せず到達できるかを BFS で検証します。
+
+```bash
+boxel check-access shuri.boxel.json --from 0,4,-5 --to 0,8,10
+```
+
+出力例:
+
+```text
+PASS: path exists
+From: (0, 4, -5)
+To:   (0, 8, 10)
+Bounds: (-25, -1, -23) -> (25, 31, 22)
+Visited: 1860
+Distance: 19
+```
+
+足場も障害物として扱いたい場合は `--include-scaffold` を付けます。
 
 Y 座標でフィルターしたいときは `--y-min` を使います（床だけで全面 ■ になる場合などに有効）:
 
@@ -300,7 +372,7 @@ boxel info myhouse.boxel.json --json
 
 城や駅舎のような大きな建築では、次の順で進めると崩れにくくなります。
 
-1. `fill` / `cylinder` / `spire` でシルエットの主ボリュームだけ作る
+1. `fill` / `cylinder` / `roof` / `gable` / `spire` でシルエットの主ボリュームだけ作る
 2. `ortho --y-min 1` で TOP / FRONT / SIDE の見え方を確認する
 3. 大きい部品は別ファイルで作って `place` で合成する
 4. 片側だけ細部を作り、`mirror` で反対側へ複製する
@@ -640,17 +712,23 @@ boxel place castle.boxel.json \
 
 ### 斜め屋根の作り方
 
-Y 層ごとに `fill` の範囲を1ずつ縮めることで、ピラミッド型の斜め屋根を作れます。
+矩形屋根なら `roof` を使うのが一番楽です。基準矩形に対して張り出し (`--overhang-*`) と段ごとの縮小 (`--shrink-*`) を指定できます。
 
 ```bash
-# 10x10 の家の上に三角屋根を作る例
-# Y=5: 10x10（屋根の最下段）
+# 10x10 の家に 1 ブロック張り出した 3 段屋根
+boxel roof house.boxel.json \
+  --x1 0 --z1 0 --x2 9 --z2 9 \
+  --y 5 --layers 3 \
+  --overhang-x 1 --overhang-z 1 \
+  --color "#4a2f08"
+```
+
+`roof` で足りない特殊形状だけを、従来どおり `fill` 段積みで微調整すると効率がよいです。
+
+```bash
+# 手作業で微調整したい場合
 boxel fill house.boxel.json --x1 0 --y1 5 --z1 0 --x2 9 --y2 5 --z2 9 --color "#4a2f08"
-
-# Y=6: 8x8（1ずつ縮める）
 boxel fill house.boxel.json --x1 1 --y1 6 --z1 1 --x2 8 --y2 6 --z2 8 --color "#4a2f08"
-
-# Y=7: 6x6
 boxel fill house.boxel.json --x1 2 --y1 7 --z1 2 --x2 7 --y2 7 --z2 7 --color "#4a2f08"
 ```
 
@@ -685,9 +763,9 @@ boxel fill lattice.boxel.json \
 
 ---
 
-## 9. 曲線・曲面プリミティブ
+## 9. 形状プリミティブ
 
-丸みのある形状（円形の塔、ドーム屋根、池など）には専用の曲線コマンドを使います。
+屋根・破風・円塔・ドームなど、箱以外の形状には専用プリミティブを使います。
 
 ### 9.1 `circle` — Y平面上の円
 
@@ -781,7 +859,61 @@ boxel ellipse plaza.boxel.json --cx 8 --cz 8 --rx 7 --rz 5 --y 0 --color "#D2B48
 
 ---
 
-### 9.5 `spire` — 段積みの尖塔 / 屋根
+### 9.5 `roof` — 張り出し付きの段屋根
+
+`roof` は基準矩形から、張り出しのある段屋根を生成します。深い軒や大きい瓦屋根を作るときに使います。
+
+```bash
+boxel roof palace.boxel.json \
+  --x1 -12 --z1 -4 --x2 12 --z2 8 \
+  --y 10 --layers 4 \
+  --overhang-x 2 --overhang-z 3 \
+  --color "#2F313A"
+```
+
+| オプション | 説明 |
+|---|---|
+| `--x1 <n>` `--z1 <n>` | 基準矩形の開始座標（必須） |
+| `--x2 <n>` `--z2 <n>` | 基準矩形の終了座標（必須） |
+| `--y <n>` | 開始Y座標（必須） |
+| `--layers <n>` | 屋根の段数（必須） |
+| `--overhang-x <n>` | X方向の張り出し量 |
+| `--overhang-z <n>` | Z方向の張り出し量 |
+| `--shrink-x <n>` | 各段での X方向縮小量（デフォルト: 1） |
+| `--shrink-z <n>` | 各段での Z方向縮小量（デフォルト: 1） |
+| `--color <#RRGGBB>` | ブロックカラー（必須） |
+| `--layer <structure\|scaffold>` | 対象レイヤー |
+| `--json` | JSON形式出力 |
+
+### 9.6 `gable` — 段状の破風 / 向拝
+
+`gable` は正面中央だけが盛り上がる装飾面を作ります。首里城の唐破風、門の破風、寺社の向拝に使えます。
+
+```bash
+boxel gable shuri.boxel.json \
+  --face north --center 0 --base -3 \
+  --y 12 --width 15 --height 4 --depth 3 \
+  --color "#E16452"
+```
+
+| オプション | 説明 |
+|---|---|
+| `--face <north\|south\|east\|west>` | 張り出す向き（必須） |
+| `--center <n>` | 幅方向の中心。偶数幅では `.5` を使える |
+| `--base <n>` | 取り付け面の基準座標 |
+| `--y <n>` | 開始Y座標 |
+| `--width <n>` | 最下段の幅 |
+| `--height <n>` | 高さ（段数） |
+| `--depth <n>` | 最下段の張り出し量 |
+| `--shrink <n>` | 各段で左右を縮める量（デフォルト: 1） |
+| `--inset <n>` | 各段で張り出しを減らす量（デフォルト: 1） |
+| `--color <#RRGGBB>` | ブロックカラー（必須） |
+| `--layer <structure\|scaffold>` | 対象レイヤー |
+| `--json` | JSON形式出力 |
+
+---
+
+### 9.7 `spire` — 段積みの尖塔 / 屋根
 
 `spire` は各層の半径を下から順に積みます。城の尖塔、塔屋根、段付きの青屋根を作るときに使います。
 
@@ -807,7 +939,7 @@ boxel spire castle.boxel.json \
 
 ---
 
-### 9.6 使用例：円形の塔
+### 9.8 使用例：円形の塔
 
 ```bash
 # 1. ファイル初期化
@@ -826,7 +958,7 @@ boxel circle tower.boxel.json --cx 5 --cz 5 --r 4 --y 11 --color "#888888" --fil
 boxel validate tower.boxel.json --json
 ```
 
-### 9.7 使用例：ドーム屋根
+### 9.9 使用例：ドーム屋根
 
 ```bash
 # 1. 既存の建物に続けてドームを追加
@@ -842,7 +974,7 @@ boxel render building.boxel.json --y 13
 boxel validate building.boxel.json --json
 ```
 
-### 9.8 使用例：楕円形の池
+### 9.10 使用例：楕円形の池
 
 ```bash
 # 1. ファイル初期化
@@ -858,7 +990,7 @@ boxel render pond.boxel.json --y 0
 boxel validate pond.boxel.json --json
 ```
 
-### 9.9 `surface` — パラメトリック曲面
+### 9.11 `surface` — パラメトリック曲面
 
 パラメトリック曲面 S(u,v) をボクセル座標列に変換して書き込みます。
 
@@ -965,7 +1097,7 @@ boxel surface saddle.json --type saddle --cx 5 --cy 5 --cz 5 --a 0.3 --b 0.3 --r
 
 ---
 
-### 9.10 render で確認する手順
+### 9.12 render で確認する手順
 
 曲線コマンド実行後は `render` で形状を確認してください。
 

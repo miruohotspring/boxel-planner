@@ -1,7 +1,8 @@
-import { useRef, useEffect, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { type Blueprint, type Block } from "@boxel-planner/schema";
 
 interface VoxelMeshProps {
@@ -101,10 +102,122 @@ interface SceneProps {
   blueprint: Blueprint;
   showScaffold: boolean;
   showOutline: boolean;
+  firstPersonMode: boolean;
 }
 
-function Scene({ blueprint, showScaffold, showOutline }: SceneProps) {
+interface FirstPersonLookControlsProps {
+  enabled: boolean;
+}
+
+function FirstPersonLookControls({ enabled }: FirstPersonLookControlsProps) {
+  const { camera, gl } = useThree();
+  const rotationRef = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
+  const pointerStateRef = useRef<{
+    active: boolean;
+    pointerId: number | null;
+    x: number;
+    y: number;
+  }>({
+    active: false,
+    pointerId: null,
+    x: 0,
+    y: 0,
+  });
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const domElement = gl.domElement;
+    const previousCursor = domElement.style.cursor;
+    const previousTouchAction = domElement.style.touchAction;
+    const maxPitch = Math.PI / 2 - 0.01;
+    const pointerState = pointerStateRef.current;
+
+    const syncRotationFromCamera = () => {
+      rotationRef.current.setFromQuaternion(camera.quaternion, "YXZ");
+    };
+
+    const stopDragging = (restoreCursor = true) => {
+      if (
+        pointerState.pointerId !== null &&
+        domElement.hasPointerCapture(pointerState.pointerId)
+      ) {
+        domElement.releasePointerCapture(pointerState.pointerId);
+      }
+      pointerState.active = false;
+      pointerState.pointerId = null;
+      if (restoreCursor) {
+        domElement.style.cursor = "grab";
+      }
+    };
+
+    const rotateCamera = (dx: number, dy: number) => {
+      rotationRef.current.y -= dx * 0.005;
+      rotationRef.current.x -= dy * 0.005;
+      rotationRef.current.x = THREE.MathUtils.clamp(rotationRef.current.x, -maxPitch, maxPitch);
+      camera.quaternion.setFromEuler(rotationRef.current);
+      camera.updateMatrixWorld();
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+
+      event.preventDefault();
+      syncRotationFromCamera();
+      pointerState.active = true;
+      pointerState.pointerId = event.pointerId;
+      pointerState.x = event.clientX;
+      pointerState.y = event.clientY;
+      domElement.style.cursor = "grabbing";
+      domElement.setPointerCapture(event.pointerId);
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!pointerState.active || pointerState.pointerId !== event.pointerId) return;
+
+      event.preventDefault();
+      const dx = event.clientX - pointerState.x;
+      const dy = event.clientY - pointerState.y;
+      pointerState.x = event.clientX;
+      pointerState.y = event.clientY;
+      rotateCamera(dx, dy);
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (pointerState.pointerId !== event.pointerId) return;
+      stopDragging();
+    };
+
+    syncRotationFromCamera();
+    domElement.style.cursor = "grab";
+    domElement.style.touchAction = "none";
+    domElement.addEventListener("pointerdown", handlePointerDown);
+    domElement.addEventListener("pointermove", handlePointerMove);
+    domElement.addEventListener("pointerup", handlePointerUp);
+    domElement.addEventListener("pointercancel", handlePointerUp);
+    domElement.addEventListener("pointerleave", handlePointerUp);
+
+    return () => {
+      stopDragging(false);
+      domElement.removeEventListener("pointerdown", handlePointerDown);
+      domElement.removeEventListener("pointermove", handlePointerMove);
+      domElement.removeEventListener("pointerup", handlePointerUp);
+      domElement.removeEventListener("pointercancel", handlePointerUp);
+      domElement.removeEventListener("pointerleave", handlePointerUp);
+      domElement.style.cursor = previousCursor;
+      domElement.style.touchAction = previousTouchAction;
+    };
+  }, [camera, enabled, gl]);
+
+  return null;
+}
+
+function Scene({ blueprint, showScaffold, showOutline, firstPersonMode }: SceneProps) {
+  const { camera } = useThree();
   const { structure, scaffold, bounds } = blueprint;
+  const orbitControlsRef = useRef<OrbitControlsImpl | null>(null);
+  const orbitTargetRef = useRef(new THREE.Vector3());
+  const prevFirstPersonModeRef = useRef(firstPersonMode);
 
   // カメラの初期位置をboundsの中心に合わせる
   const center = useMemo(() => {
@@ -120,6 +233,34 @@ function Scene({ blueprint, showScaffold, showOutline }: SceneProps) {
     const dz = bounds.max.z - bounds.min.z;
     return Math.max(dx, dy, dz, 5) * 2;
   }, [bounds]);
+
+  useEffect(() => {
+    orbitTargetRef.current.copy(center);
+
+    if (!firstPersonMode && orbitControlsRef.current) {
+      orbitControlsRef.current.target.copy(center);
+      orbitControlsRef.current.update();
+    }
+  }, [center]);
+
+  useLayoutEffect(() => {
+    const wasFirstPersonMode = prevFirstPersonModeRef.current;
+
+    if (wasFirstPersonMode && !firstPersonMode) {
+      const direction = new THREE.Vector3();
+      camera.getWorldDirection(direction);
+
+      const distance = Math.max(camera.position.distanceTo(orbitTargetRef.current), 0.001);
+      orbitTargetRef.current.copy(camera.position).add(direction.multiplyScalar(distance));
+
+      if (orbitControlsRef.current) {
+        orbitControlsRef.current.target.copy(orbitTargetRef.current);
+        orbitControlsRef.current.update();
+      }
+    }
+
+    prevFirstPersonModeRef.current = firstPersonMode;
+  }, [camera, firstPersonMode]);
 
   return (
     <>
@@ -148,12 +289,17 @@ function Scene({ blueprint, showScaffold, showOutline }: SceneProps) {
         position={[center.x, bounds.min.y - 0.5, center.z]}
       />
 
-      <OrbitControls
-        target={center}
-        maxDistance={cameraDistance * 3}
-        enableDamping
-        dampingFactor={0.1}
-      />
+      {firstPersonMode ? (
+        <FirstPersonLookControls enabled />
+      ) : (
+        <OrbitControls
+          ref={orbitControlsRef}
+          target={center}
+          maxDistance={cameraDistance * 3}
+          enableDamping
+          dampingFactor={0.1}
+        />
+      )}
     </>
   );
 }
@@ -185,9 +331,10 @@ interface View3DProps {
   blueprint: Blueprint | null;
   showScaffold: boolean;
   showOutline: boolean;
+  firstPersonMode: boolean;
 }
 
-export function View3D({ blueprint, showScaffold, showOutline }: View3DProps) {
+export function View3D({ blueprint, showScaffold, showOutline, firstPersonMode }: View3DProps) {
   return (
     <div style={{ width: "100%", height: "100%", background: "#0d1117" }}>
       <Canvas
@@ -219,11 +366,35 @@ export function View3D({ blueprint, showScaffold, showOutline }: View3DProps) {
         style={{ background: "#0d1117" }}
       >
         {blueprint ? (
-          <Scene blueprint={blueprint} showScaffold={showScaffold} showOutline={showOutline} />
+          <Scene
+            blueprint={blueprint}
+            showScaffold={showScaffold}
+            showOutline={showOutline}
+            firstPersonMode={firstPersonMode}
+          />
         ) : (
           <EmptyScene />
         )}
       </Canvas>
+
+      {blueprint && firstPersonMode && (
+        <div
+          style={{
+            position: "absolute",
+            top: "12px",
+            right: "12px",
+            background: "rgba(22, 27, 34, 0.85)",
+            border: "1px solid #30363d",
+            borderRadius: "6px",
+            padding: "6px 10px",
+            fontSize: "12px",
+            color: "#8b949e",
+            pointerEvents: "none",
+          }}
+        >
+          First Person: ドラッグで視線回転
+        </div>
+      )}
 
       {/* オーバーレイのヒント */}
       {!blueprint && (

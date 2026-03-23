@@ -6,10 +6,12 @@ interface ToolbarProps {
   viewMode: "3d" | "2d";
   showScaffold: boolean;
   showOutline: boolean;
+  firstPersonMode: boolean;
   blueprint: Blueprint | null;
   onViewModeChange: (mode: "3d" | "2d") => void;
   onToggleScaffold: () => void;
   onToggleOutline: () => void;
+  onToggleFirstPerson: () => void;
   onImport: (bp: Blueprint) => void;
   onImportError: (err: string) => void;
   importError: string | null;
@@ -19,10 +21,12 @@ export function Toolbar({
   viewMode,
   showScaffold,
   showOutline,
+  firstPersonMode,
   blueprint,
   onViewModeChange,
   onToggleScaffold,
   onToggleOutline,
+  onToggleFirstPerson,
   onImport,
   onImportError,
   importError,
@@ -196,6 +200,14 @@ export function Toolbar({
         title="輪郭線の表示切替"
       >
         輪郭線: {showOutline ? "ON" : "OFF"}
+      </button>
+
+      <button
+        style={firstPersonMode ? btnActive : btnBase}
+        onClick={onToggleFirstPerson}
+        title="3Dビューの first person モード切替"
+      >
+        First Person: {firstPersonMode ? "ON" : "OFF"}
       </button>
 
       {/* Error message */}

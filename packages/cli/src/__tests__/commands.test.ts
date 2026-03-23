@@ -339,6 +339,8 @@ describe("fill command logic", () => {
 // commands/render ロジック
 // ============================================================
 import { renderSlice } from "../commands/render.js";
+import { evaluateSizeLimits } from "../commands/check.js";
+import { evaluateAccessPath } from "../commands/check-access.js";
 
 describe("render command", () => {
   it("Y断面のグリッドを出力できる", () => {
@@ -367,6 +369,128 @@ describe("render command", () => {
     const bp = makeBlueprint();
     const { grid } = renderSlice(bp, 0);
     expect(grid).toBe("(empty)");
+  });
+});
+
+// ============================================================
+// commands/check ロジック
+// ============================================================
+describe("check command", () => {
+  it("structure のサイズが上限内なら passed=true", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: -2, y: 0, z: -1, color: "#FF0000" },
+        { x: 2, y: 3, z: 1, color: "#FF0000" },
+      ],
+    });
+
+    const result = evaluateSizeLimits(bp, "structure", { x: 5, y: 4, z: 3 });
+
+    expect(result.passed).toBe(true);
+    expect(result.bounds?.size).toEqual({ x: 5, y: 4, z: 3 });
+    expect(result.checks).toEqual([
+      { axis: "x", size: 5, limit: 5, ok: true },
+      { axis: "y", size: 4, limit: 4, ok: true },
+      { axis: "z", size: 3, limit: 3, ok: true },
+    ]);
+  });
+
+  it("structure のサイズが上限を超えると passed=false", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 0, y: 0, z: 0, color: "#FF0000" },
+        { x: 5, y: 1, z: 0, color: "#FF0000" },
+      ],
+    });
+
+    const result = evaluateSizeLimits(bp, "structure", { x: 5, y: 2 });
+
+    expect(result.passed).toBe(false);
+    expect(result.checks).toEqual([
+      { axis: "x", size: 6, limit: 5, ok: false },
+      { axis: "y", size: 2, limit: 2, ok: true },
+    ]);
+  });
+
+  it("target=all では scaffold を含めたサイズで判定する", () => {
+    const bp = makeBlueprint({
+      structure: [{ x: 0, y: 0, z: 0, color: "#FF0000" }],
+      scaffold: [{ x: 4, y: 0, z: 0, color: "#888888" }],
+    });
+
+    const result = evaluateSizeLimits(bp, "all", { x: 4 });
+
+    expect(result.passed).toBe(false);
+    expect(result.bounds?.size.x).toBe(5);
+  });
+
+  it("空レイヤーは size 0 として扱う", () => {
+    const bp = makeBlueprint();
+    const result = evaluateSizeLimits(bp, "structure", { x: 0, y: 0, z: 0 });
+
+    expect(result.passed).toBe(true);
+    expect(result.bounds).toBeNull();
+    expect(result.checks).toEqual([
+      { axis: "x", size: 0, limit: 0, ok: true },
+      { axis: "y", size: 0, limit: 0, ok: true },
+      { axis: "z", size: 0, limit: 0, ok: true },
+    ]);
+  });
+});
+
+describe("check-access command", () => {
+  it("障害物がなければ pathFound=true", () => {
+    const bp = makeBlueprint();
+    const result = evaluateAccessPath(bp, { x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 });
+
+    expect(result.pathFound).toBe(true);
+    expect(result.distance).toBe(2);
+  });
+
+  it("壁で完全に塞がれると pathFound=false", () => {
+    const bp = makeBlueprint({
+      structure: Array.from({ length: 9 }, (_, i) => {
+        const y = Math.floor(i / 3) - 1;
+        const z = (i % 3) - 1;
+        return { x: 1, y, z, color: "#FF0000" };
+      }),
+    });
+    const result = evaluateAccessPath(bp, { x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, { margin: 0 });
+
+    expect(result.pathFound).toBe(false);
+    expect(result.reason).toContain("no path");
+  });
+
+  it("開始点が埋まっていると失敗する", () => {
+    const bp = makeBlueprint({
+      structure: [{ x: 0, y: 0, z: 0, color: "#FF0000" }],
+    });
+    const result = evaluateAccessPath(bp, { x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 });
+
+    expect(result.pathFound).toBe(false);
+    expect(result.reason).toBe("start is occupied");
+  });
+
+  it("includeScaffold=true で足場も障害物として扱う", () => {
+    const bp = makeBlueprint({
+      scaffold: [{ x: 1, y: 0, z: 0, color: "#888888" }],
+    });
+
+    const withoutScaffold = evaluateAccessPath(
+      bp,
+      { x: 0, y: 0, z: 0 },
+      { x: 2, y: 0, z: 0 },
+      { margin: 0 }
+    );
+    const withScaffold = evaluateAccessPath(
+      bp,
+      { x: 0, y: 0, z: 0 },
+      { x: 2, y: 0, z: 0 },
+      { includeScaffold: true, margin: 0 }
+    );
+
+    expect(withoutScaffold.pathFound).toBe(true);
+    expect(withScaffold.pathFound).toBe(false);
   });
 });
 

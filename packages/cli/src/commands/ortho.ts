@@ -11,22 +11,26 @@ import { printData, printError, type OutputOptions } from "../lib/output.js";
 const BLOCK_CHAR = "■";
 const EMPTY_CHAR = "·";
 const SCAFFOLD_CHAR = "░";
-
-// 記号割り当て用のアルファベット列
 const SYMBOLS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-/** 色情報エントリ */
+export type OrthoMode = "solid" | "coord";
+export type OrthoCell = string | number | null;
+export type OrthoView = "top" | "front" | "side" | "all";
+export type OrthoCoordStyle = "raw" | "braille";
+
+const BRAILLE_LEVELS = ["⠀", "⠁", "⠃", "⠇", "⠧", "⠷", "⠿", "⣷", "⣿"] as const;
+
 interface ColorEntry {
   symbol: string;
   isScaffold: boolean;
   count: number;
 }
 
-/**
- * --verbose 用の色マップを構築する。
- * structure のブロックを先に登録し（a, b, c...）、scaffold を後に登録する。
- * 返値: color（大文字） → ColorEntry のマップ
- */
+interface ViewState {
+  structure: Set<string>;
+  scaffold: Set<string>;
+}
+
 function buildColorMap(
   blueprint: Blueprint,
   showScaffold: boolean
@@ -52,11 +56,6 @@ function buildColorMap(
   return colorInfo;
 }
 
-/**
- * TOP ビュー用の代表色マップを返す。
- * キー: "x,z"  値: color（大文字）
- * 代表色: その (x,z) セルで最も Y が大きいブロックの色
- */
 function buildTopColorMap(
   blueprint: Blueprint,
   showScaffold: boolean
@@ -75,18 +74,12 @@ function buildTopColorMap(
     }
   };
 
-  // structure が scaffold より優先されるよう structure を後に処理
   if (showScaffold) process(blueprint.scaffold);
   process(blueprint.structure);
 
   return result;
 }
 
-/**
- * FRONT ビュー用の代表色マップを返す。
- * キー: "x,y"  値: color（大文字）
- * 代表色: その (x,y) セルで最も Z が小さいブロックの色
- */
 function buildFrontColorMap(
   blueprint: Blueprint,
   showScaffold: boolean
@@ -111,11 +104,6 @@ function buildFrontColorMap(
   return result;
 }
 
-/**
- * SIDE ビュー用の代表色マップを返す。
- * キー: "z,y"  値: color（大文字）
- * 代表色: その (z,y) セルで最も X が小さいブロックの色
- */
 function buildSideColorMap(
   blueprint: Blueprint,
   showScaffold: boolean
@@ -140,338 +128,426 @@ function buildSideColorMap(
   return result;
 }
 
-/** bounds を structure と scaffold の全ブロックから計算する。空なら null */
 function computeAllBounds(blueprint: Blueprint): Bounds | null {
-  const all = [...blueprint.structure, ...blueprint.scaffold];
-  return computeBounds(all);
+  return computeBounds([...blueprint.structure, ...blueprint.scaffold]);
 }
 
-/**
- * TOP ビュー（Y軸方向から見下ろす）のグリッドを生成する。
- * 行 = Z 座標（min.z から max.z）
- * 列 = X 座標（min.x から max.x）
- * colorInfo が渡された場合は記号グリッドを生成する（verbose モード）
- */
-function buildTopGrid(
-  blueprint: Blueprint,
+function buildTopState(blueprint: Blueprint): ViewState {
+  const structure = new Set<string>();
+  const scaffold = new Set<string>();
+  for (const b of blueprint.structure) structure.add(`${b.x},${b.z}`);
+  for (const b of blueprint.scaffold) scaffold.add(`${b.x},${b.z}`);
+  return { structure, scaffold };
+}
+
+function buildFrontState(blueprint: Blueprint): ViewState {
+  const structure = new Set<string>();
+  const scaffold = new Set<string>();
+  for (const b of blueprint.structure) structure.add(`${b.x},${b.y}`);
+  for (const b of blueprint.scaffold) scaffold.add(`${b.x},${b.y}`);
+  return { structure, scaffold };
+}
+
+function buildSideState(blueprint: Blueprint): ViewState {
+  const structure = new Set<string>();
+  const scaffold = new Set<string>();
+  for (const b of blueprint.structure) structure.add(`${b.z},${b.y}`);
+  for (const b of blueprint.scaffold) scaffold.add(`${b.z},${b.y}`);
+  return { structure, scaffold };
+}
+
+function buildSolidGrid(
   bounds: Bounds,
+  rows: number[],
+  cols: number[],
+  state: ViewState,
   showScaffold: boolean,
   colorInfo?: Map<string, ColorEntry>,
-  viewColorMap?: Map<string, string>
+  colorMap?: Map<string, string>
 ): string[][] {
-  const structureSet = new Set<string>();
-  const scaffoldSet = new Set<string>();
+  const grid: string[][] = [];
 
-  for (const b of blueprint.structure) {
-    structureSet.add(`${b.x},${b.z}`);
-  }
-  for (const b of blueprint.scaffold) {
-    scaffoldSet.add(`${b.x},${b.z}`);
-  }
-
-  const rows: string[][] = [];
-  for (let z = bounds.min.z; z <= bounds.max.z; z++) {
-    const row: string[] = [];
-    for (let x = bounds.min.x; x <= bounds.max.x; x++) {
-      const key = `${x},${z}`;
-      const hasStructure = structureSet.has(key);
-      const hasScaffold = showScaffold && scaffoldSet.has(key);
-      if (colorInfo && viewColorMap && (hasStructure || hasScaffold)) {
-        const color = viewColorMap.get(key);
-        const symbol = color ? (colorInfo.get(color)?.symbol ?? BLOCK_CHAR) : BLOCK_CHAR;
-        row.push(symbol);
+  for (const row of rows) {
+    const outRow: string[] = [];
+    for (const col of cols) {
+      const key = `${col},${row}`;
+      const hasStructure = state.structure.has(key);
+      const hasScaffold = showScaffold && state.scaffold.has(key);
+      if (colorInfo && colorMap && (hasStructure || hasScaffold)) {
+        const color = colorMap.get(key);
+        outRow.push(color ? (colorInfo.get(color)?.symbol ?? BLOCK_CHAR) : BLOCK_CHAR);
       } else if (hasStructure) {
-        row.push(BLOCK_CHAR);
+        outRow.push(BLOCK_CHAR);
       } else if (hasScaffold) {
-        row.push(SCAFFOLD_CHAR);
+        outRow.push(SCAFFOLD_CHAR);
       } else {
-        row.push(EMPTY_CHAR);
+        outRow.push(EMPTY_CHAR);
       }
     }
-    rows.push(row);
+    grid.push(outRow);
   }
-  return rows;
+
+  return grid;
 }
 
-/**
- * FRONT ビュー（Z軸方向から見る）のグリッドを生成する。
- * 行 = Y 座標（max.y から min.y、上が大きい）
- * 列 = X 座標（min.x から max.x）
- * colorInfo が渡された場合は記号グリッドを生成する（verbose モード）
- */
-function buildFrontGrid(
-  blueprint: Blueprint,
-  bounds: Bounds,
-  showScaffold: boolean,
-  colorInfo?: Map<string, ColorEntry>,
-  viewColorMap?: Map<string, string>
-): string[][] {
-  const structureSet = new Set<string>();
-  const scaffoldSet = new Set<string>();
+function buildVisibleValueMap(
+  blocks: Block[],
+  keyFn: (block: Block) => string,
+  valueFn: (block: Block) => number,
+  prefer: (next: number, current: number) => boolean
+): Map<string, number> {
+  const values = new Map<string, number>();
 
-  for (const b of blueprint.structure) {
-    structureSet.add(`${b.x},${b.y}`);
-  }
-  for (const b of blueprint.scaffold) {
-    scaffoldSet.add(`${b.x},${b.y}`);
-  }
-
-  const rows: string[][] = [];
-  for (let y = bounds.max.y; y >= bounds.min.y; y--) {
-    const row: string[] = [];
-    for (let x = bounds.min.x; x <= bounds.max.x; x++) {
-      const key = `${x},${y}`;
-      const hasStructure = structureSet.has(key);
-      const hasScaffold = showScaffold && scaffoldSet.has(key);
-      if (colorInfo && viewColorMap && (hasStructure || hasScaffold)) {
-        const color = viewColorMap.get(key);
-        const symbol = color ? (colorInfo.get(color)?.symbol ?? BLOCK_CHAR) : BLOCK_CHAR;
-        row.push(symbol);
-      } else if (hasStructure) {
-        row.push(BLOCK_CHAR);
-      } else if (hasScaffold) {
-        row.push(SCAFFOLD_CHAR);
-      } else {
-        row.push(EMPTY_CHAR);
-      }
+  for (const block of blocks) {
+    const key = keyFn(block);
+    const value = valueFn(block);
+    const current = values.get(key);
+    if (current === undefined || prefer(value, current)) {
+      values.set(key, value);
     }
-    rows.push(row);
   }
-  return rows;
+
+  return values;
 }
 
-/**
- * SIDE ビュー（X軸方向から見る）のグリッドを生成する。
- * 行 = Y 座標（max.y から min.y、上が大きい）
- * 列 = Z 座標（min.z から max.z）
- * colorInfo が渡された場合は記号グリッドを生成する（verbose モード）
- */
-function buildSideGrid(
-  blueprint: Blueprint,
-  bounds: Bounds,
-  showScaffold: boolean,
-  colorInfo?: Map<string, ColorEntry>,
-  viewColorMap?: Map<string, string>
-): string[][] {
-  const structureSet = new Set<string>();
-  const scaffoldSet = new Set<string>();
+function buildTopCoordMap(blueprint: Blueprint, showScaffold: boolean): Map<string, number> {
+  const blocks = showScaffold
+    ? [...blueprint.scaffold, ...blueprint.structure]
+    : blueprint.structure;
+  return buildVisibleValueMap(blocks, (b) => `${b.x},${b.z}`, (b) => b.y, (next, current) => next > current);
+}
 
-  for (const b of blueprint.structure) {
-    structureSet.add(`${b.z},${b.y}`);
-  }
-  for (const b of blueprint.scaffold) {
-    scaffoldSet.add(`${b.z},${b.y}`);
-  }
+function buildFrontCoordMap(blueprint: Blueprint, showScaffold: boolean): Map<string, number> {
+  const blocks = showScaffold
+    ? [...blueprint.scaffold, ...blueprint.structure]
+    : blueprint.structure;
+  return buildVisibleValueMap(blocks, (b) => `${b.x},${b.y}`, (b) => b.z, (next, current) => next < current);
+}
 
-  const rows: string[][] = [];
-  for (let y = bounds.max.y; y >= bounds.min.y; y--) {
-    const row: string[] = [];
-    for (let z = bounds.min.z; z <= bounds.max.z; z++) {
-      const key = `${z},${y}`;
-      const hasStructure = structureSet.has(key);
-      const hasScaffold = showScaffold && scaffoldSet.has(key);
-      if (colorInfo && viewColorMap && (hasStructure || hasScaffold)) {
-        const color = viewColorMap.get(key);
-        const symbol = color ? (colorInfo.get(color)?.symbol ?? BLOCK_CHAR) : BLOCK_CHAR;
-        row.push(symbol);
-      } else if (hasStructure) {
-        row.push(BLOCK_CHAR);
-      } else if (hasScaffold) {
-        row.push(SCAFFOLD_CHAR);
-      } else {
-        row.push(EMPTY_CHAR);
-      }
+function buildSideCoordMap(blueprint: Blueprint, showScaffold: boolean): Map<string, number> {
+  const blocks = showScaffold
+    ? [...blueprint.scaffold, ...blueprint.structure]
+    : blueprint.structure;
+  return buildVisibleValueMap(blocks, (b) => `${b.z},${b.y}`, (b) => b.x, (next, current) => next < current);
+}
+
+function buildCoordGrid(
+  rows: number[],
+  cols: number[],
+  values: Map<string, number>
+): Array<Array<number | null>> {
+  const grid: Array<Array<number | null>> = [];
+
+  for (const row of rows) {
+    const outRow: Array<number | null> = [];
+    for (const col of cols) {
+      const key = `${col},${row}`;
+      outRow.push(values.get(key) ?? null);
     }
-    rows.push(row);
+    grid.push(outRow);
   }
-  return rows;
+
+  return grid;
 }
 
-/** 座標ラベルを間引きして生成する（5の倍数のみ表示） */
-function makeAxisLabel(min: number, max: number): string {
-  return Array.from({ length: max - min + 1 }, (_, i) => {
-    const v = min + i;
-    return v % 5 === 0 ? String(Math.abs(v) % 10) : " ";
-  }).join("");
+function makeAxisLabel(
+  min: number,
+  max: number,
+  cellWidth: number,
+  separator: string
+): string {
+  const parts: string[] = [];
+  for (let v = min; v <= max; v++) {
+    const label = v % 5 === 0 ? String(v) : "";
+    parts.push(label.padStart(cellWidth));
+  }
+  return parts.join(separator);
 }
 
-/**
- * 1つのビューを行の文字列配列として組み立てる。
- * 返値の各要素が1行分の文字列。
- *
- * @param title  ヘッダータイトル（例: "TOP (Y↓)"）
- * @param colMin 列方向の最小座標
- * @param colMax 列方向の最大座標
- * @param rowMin 行方向の最小座標（TOP では Z min、FRONT/SIDE では Y min）
- * @param rowMax 行方向の最大座標
- * @param rowValues 実際の行座標の配列（上から順）
- * @param grid   グリッドデータ（rows x cols の文字配列）
- * @param viewWidth 列数
- */
+function formatCell(cell: OrthoCell, cellWidth: number): string {
+  if (cell === null) return " ".repeat(cellWidth);
+  return String(cell).padStart(cellWidth);
+}
+
+function normalizeCoordGridToBraille(
+  grid: OrthoCell[][],
+  opts: { invert?: boolean } = {}
+): string[][] {
+  const values = grid
+    .flat()
+    .filter((cell): cell is number => typeof cell === "number");
+
+  if (values.length === 0) {
+    return grid.map((row) => row.map(() => " "));
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+
+  return grid.map((row) =>
+    row.map((cell) => {
+      if (cell === null) return " ";
+      if (typeof cell !== "number") return cell;
+      if (range === 0) return BRAILLE_LEVELS[BRAILLE_LEVELS.length - 1]!;
+      const ratio = (cell - min) / range;
+      const normalized = Math.round(
+        (opts.invert ? 1 - ratio : ratio) * (BRAILLE_LEVELS.length - 1)
+      );
+      return BRAILLE_LEVELS[normalized]!;
+    })
+  );
+}
+
 function buildViewLines(
   title: string,
   colMin: number,
   colMax: number,
   rowValues: number[],
-  grid: string[][]
+  grid: OrthoCell[][],
+  cellWidth: number,
+  separator: string
 ): string[] {
-  const colCount = colMax - colMin + 1;
-  const rowLabelWidth = 3; // 行ラベルの幅 ("  0" など)
-  const totalWidth = rowLabelWidth + 1 + colCount; // ラベル + スペース + グリッド
-
-  // ヘッダー行（タイトルを "── TITLE ──────" 形式にする）
+  const rowLabelWidth = Math.max(
+    3,
+    ...rowValues.map((value) => String(value).length)
+  );
+  const rowTextWidth = cellWidth * (colMax - colMin + 1) + separator.length * (colMax - colMin);
+  const totalWidth = rowLabelWidth + 1 + rowTextWidth;
   const titleStr = `── ${title} `;
-  const headerPad = Math.max(0, totalWidth - titleStr.length);
-  const header = titleStr + "─".repeat(headerPad);
+  const header = titleStr + "─".repeat(Math.max(0, totalWidth - titleStr.length));
+  const axisLine = " ".repeat(rowLabelWidth + 1) + makeAxisLabel(colMin, colMax, cellWidth, separator);
 
-  // 列軸ラベル行
-  const axisLabel = makeAxisLabel(colMin, colMax);
-  const axisLine = " ".repeat(rowLabelWidth + 1) + axisLabel;
-
-  const lines: string[] = [header, axisLine];
-
+  const lines = [header, axisLine];
   for (let i = 0; i < rowValues.length; i++) {
-    const rowLabel = String(rowValues[i]).padStart(rowLabelWidth);
-    const rowChars = grid[i] ?? [];
-    lines.push(`${rowLabel} ${rowChars.join("")}`);
+    const label = String(rowValues[i]).padStart(rowLabelWidth);
+    const row = (grid[i] ?? []).map((cell) => formatCell(cell, cellWidth)).join(separator);
+    lines.push(`${label} ${row}`);
   }
-
   return lines;
 }
 
-/** 3方向正射影ビューのデータを生成する */
 export function buildOrthoViews(
   blueprint: Blueprint,
   showScaffold: boolean,
-  verbose?: boolean
+  verbose = false,
+  mode: OrthoMode = "solid"
 ): {
-  topGrid: string[][];
-  frontGrid: string[][];
-  sideGrid: string[][];
+  topGrid: OrthoCell[][];
+  frontGrid: OrthoCell[][];
+  sideGrid: OrthoCell[][];
   bounds: Bounds;
   legend?: string;
+  mode: OrthoMode;
 } | null {
   const bounds = computeAllBounds(blueprint);
   if (!bounds) return null;
 
-  if (verbose) {
-    const colorInfo = buildColorMap(blueprint, showScaffold);
+  const topRows = Array.from({ length: bounds.max.z - bounds.min.z + 1 }, (_, i) => bounds.min.z + i);
+  const frontRows = Array.from({ length: bounds.max.y - bounds.min.y + 1 }, (_, i) => bounds.max.y - i);
+  const sideRows = Array.from({ length: bounds.max.y - bounds.min.y + 1 }, (_, i) => bounds.max.y - i);
+  const xCols = Array.from({ length: bounds.max.x - bounds.min.x + 1 }, (_, i) => bounds.min.x + i);
+  const zCols = Array.from({ length: bounds.max.z - bounds.min.z + 1 }, (_, i) => bounds.min.z + i);
 
-    // 色が1種類以下ならフォールバック（通常の ■/· 表示）
-    if (colorInfo.size <= 1) {
-      const topGrid = buildTopGrid(blueprint, bounds, showScaffold);
-      const frontGrid = buildFrontGrid(blueprint, bounds, showScaffold);
-      const sideGrid = buildSideGrid(blueprint, bounds, showScaffold);
-      return { topGrid, frontGrid, sideGrid, bounds };
-    }
-
-    const topColorMap = buildTopColorMap(blueprint, showScaffold);
-    const frontColorMap = buildFrontColorMap(blueprint, showScaffold);
-    const sideColorMap = buildSideColorMap(blueprint, showScaffold);
-
-    const topGrid = buildTopGrid(blueprint, bounds, showScaffold, colorInfo, topColorMap);
-    const frontGrid = buildFrontGrid(blueprint, bounds, showScaffold, colorInfo, frontColorMap);
-    const sideGrid = buildSideGrid(blueprint, bounds, showScaffold, colorInfo, sideColorMap);
-
-    // レジェンド生成
-    const legendLines = ["Legend:"];
-    for (const [color, info] of colorInfo.entries()) {
-      const scaffoldNote = info.isScaffold ? " (scaffold)" : " (structure)";
-      legendLines.push(`  ${info.symbol} = ${color}  ×${info.count}${scaffoldNote}`);
-    }
-    const legend = legendLines.join("\n");
-
-    return { topGrid, frontGrid, sideGrid, bounds, legend };
+  if (mode === "coord") {
+    return {
+      topGrid: buildCoordGrid(topRows, xCols, buildTopCoordMap(blueprint, showScaffold)),
+      frontGrid: buildCoordGrid(frontRows, xCols, buildFrontCoordMap(blueprint, showScaffold)),
+      sideGrid: buildCoordGrid(sideRows, zCols, buildSideCoordMap(blueprint, showScaffold)),
+      bounds,
+      mode,
+    };
   }
 
-  const topGrid = buildTopGrid(blueprint, bounds, showScaffold);
-  const frontGrid = buildFrontGrid(blueprint, bounds, showScaffold);
-  const sideGrid = buildSideGrid(blueprint, bounds, showScaffold);
+  if (verbose) {
+    const colorInfo = buildColorMap(blueprint, showScaffold);
+    if (colorInfo.size > 1) {
+      const topGrid = buildSolidGrid(
+        bounds,
+        topRows,
+        xCols,
+        buildTopState(blueprint),
+        showScaffold,
+        colorInfo,
+        buildTopColorMap(blueprint, showScaffold)
+      );
+      const frontGrid = buildSolidGrid(
+        bounds,
+        frontRows,
+        xCols,
+        buildFrontState(blueprint),
+        showScaffold,
+        colorInfo,
+        buildFrontColorMap(blueprint, showScaffold)
+      );
+      const sideGrid = buildSolidGrid(
+        bounds,
+        sideRows,
+        zCols,
+        buildSideState(blueprint),
+        showScaffold,
+        colorInfo,
+        buildSideColorMap(blueprint, showScaffold)
+      );
 
-  return { topGrid, frontGrid, sideGrid, bounds };
+      const legendLines = ["Legend:"];
+      for (const [color, info] of colorInfo.entries()) {
+        legendLines.push(`  ${info.symbol} = ${color}  ×${info.count}${info.isScaffold ? " (scaffold)" : " (structure)"}`);
+      }
+
+      return {
+        topGrid,
+        frontGrid,
+        sideGrid,
+        bounds,
+        legend: legendLines.join("\n"),
+        mode,
+      };
+    }
+  }
+
+  return {
+    topGrid: buildSolidGrid(bounds, topRows, xCols, buildTopState(blueprint), showScaffold),
+    frontGrid: buildSolidGrid(bounds, frontRows, xCols, buildFrontState(blueprint), showScaffold),
+    sideGrid: buildSolidGrid(bounds, sideRows, zCols, buildSideState(blueprint), showScaffold),
+    bounds,
+    mode,
+  };
 }
 
-/** 3つのビューを横並びに並べたテキストを生成する */
 export function renderOrtho(
   blueprint: Blueprint,
   showScaffold: boolean,
-  verbose?: boolean
+  verbose = false,
+  mode: OrthoMode = "solid",
+  view: OrthoView = "all",
+  coordStyle: OrthoCoordStyle = "raw"
 ): string {
-  const result = buildOrthoViews(blueprint, showScaffold, verbose);
+  const result = buildOrthoViews(blueprint, showScaffold, verbose, mode);
   if (!result) return "(empty)";
 
-  const { topGrid, frontGrid, sideGrid, bounds, legend } = result;
+  let { topGrid, frontGrid, sideGrid, bounds, legend } = result;
+  const topRowValues = Array.from({ length: bounds.max.z - bounds.min.z + 1 }, (_, i) => bounds.min.z + i);
+  const frontRowValues = Array.from({ length: bounds.max.y - bounds.min.y + 1 }, (_, i) => bounds.max.y - i);
+  const sideRowValues = Array.from({ length: bounds.max.y - bounds.min.y + 1 }, (_, i) => bounds.max.y - i);
 
-  // TOP: 行ラベルは Z 座標（min.z から max.z）
-  const topRowValues: number[] = [];
-  for (let z = bounds.min.z; z <= bounds.max.z; z++) topRowValues.push(z);
+  if (mode === "coord" && coordStyle === "braille") {
+    topGrid = normalizeCoordGridToBraille(topGrid);
+    frontGrid = normalizeCoordGridToBraille(frontGrid, { invert: true });
+    sideGrid = normalizeCoordGridToBraille(sideGrid, { invert: true });
+  }
 
-  // FRONT: 行ラベルは Y 座標（max.y から min.y）
-  const frontRowValues: number[] = [];
-  for (let y = bounds.max.y; y >= bounds.min.y; y--) frontRowValues.push(y);
-
-  // SIDE: 行ラベルは Y 座標（max.y から min.y）
-  const sideRowValues: number[] = [];
-  for (let y = bounds.max.y; y >= bounds.min.y; y--) sideRowValues.push(y);
+  const allCells = [...topGrid.flat(), ...frontGrid.flat(), ...sideGrid.flat()];
+  const cellWidth = mode === "coord" && coordStyle === "raw"
+    ? Math.max(1, ...allCells.filter((cell): cell is number => typeof cell === "number").map((cell) => String(cell).length))
+    : 1;
+  const separator = mode === "coord" && coordStyle === "raw" ? " " : "";
 
   const topLines = buildViewLines(
-    "TOP (Y↓)",
+    mode === "coord"
+      ? coordStyle === "braille" ? "TOP (visible Y, braille)" : "TOP (visible Y)"
+      : "TOP (Y↓)",
     bounds.min.x,
     bounds.max.x,
     topRowValues,
-    topGrid
+    topGrid,
+    cellWidth,
+    separator
   );
-
   const frontLines = buildViewLines(
-    "FRONT (Z↑)",
+    mode === "coord"
+      ? coordStyle === "braille" ? "FRONT (visible Z, braille)" : "FRONT (visible Z)"
+      : "FRONT (Z↑)",
     bounds.min.x,
     bounds.max.x,
     frontRowValues,
-    frontGrid
+    frontGrid,
+    cellWidth,
+    separator
   );
-
   const sideLines = buildViewLines(
-    "SIDE (X→)",
+    mode === "coord"
+      ? coordStyle === "braille" ? "SIDE (visible X, braille)" : "SIDE (visible X)"
+      : "SIDE (X→)",
     bounds.min.z,
     bounds.max.z,
     sideRowValues,
-    sideGrid
+    sideGrid,
+    cellWidth,
+    separator
   );
 
-  // 3つのビューを横並びに結合する
-  const maxRows = Math.max(topLines.length, frontLines.length, sideLines.length);
-  const colSep = "   "; // ビュー間のセパレーター
+  const output: string[] = [];
+  if (view === "top") {
+    output.push(...topLines);
+  } else if (view === "front") {
+    output.push(...frontLines);
+  } else if (view === "side") {
+    output.push(...sideLines);
+  } else {
+    const topWidth = Math.max(...topLines.map((line) => line.length));
+    const frontWidth = Math.max(...frontLines.map((line) => line.length));
+    const maxRows = Math.max(topLines.length, frontLines.length, sideLines.length);
 
-  // 各ビューの最大幅を計算してパディング
-  const topWidth = Math.max(...topLines.map((l) => l.length));
-  const frontWidth = Math.max(...frontLines.map((l) => l.length));
-
-  const combinedLines: string[] = [];
-  for (let i = 0; i < maxRows; i++) {
-    const topPart = (topLines[i] ?? "").padEnd(topWidth);
-    const frontPart = (frontLines[i] ?? "").padEnd(frontWidth);
-    const sidePart = sideLines[i] ?? "";
-    combinedLines.push(`${topPart}${colSep}${frontPart}${colSep}${sidePart}`);
+    for (let i = 0; i < maxRows; i++) {
+      const topPart = (topLines[i] ?? "").padEnd(topWidth);
+      const frontPart = (frontLines[i] ?? "").padEnd(frontWidth);
+      const sidePart = sideLines[i] ?? "";
+      output.push(`${topPart}   ${frontPart}   ${sidePart}`);
+    }
   }
 
-  const output = combinedLines.join("\n");
   if (legend) {
-    return `${output}\n${legend}`;
+    output.push(legend);
   }
-  return output;
+  if (mode === "coord" && coordStyle === "braille") {
+    output.push("Braille scale: low -> high = " + BRAILLE_LEVELS.join(""));
+  }
+
+  return output.join("\n");
 }
 
 export function registerOrtho(program: Command): void {
   program
     .command("ortho <file>")
     .description("3方向正射影ビュー（TOP/FRONT/SIDE）を横並びで出力する（LLM確認用）")
-    .option("--scaffold", "足場も表示する（░ で区別）")
-    .option("--verbose", "色ごとに記号を割り当ててレジェンドを表示する")
+    .option("--scaffold", "足場も表示する（solid モードでは ░ で区別）")
+    .option("--verbose", "solid モードで色ごとに記号を割り当ててレジェンドを表示する")
+    .option("--mode <mode>", "表示モード: solid | coord", "solid")
+    .option("--view <view>", "表示する面: top | front | side | all", "all")
+    .option("--style <style>", "coord モードの表示スタイル: raw | braille", "raw")
     .option("--y-min <n>", "表示するY座標の下限（床など低層を除外するときに使用）", Number)
     .option("--y-max <n>", "表示するY座標の上限", Number)
     .option("--json", "グリッドデータを JSON で出力する")
-    .action((file: string, opts: { scaffold?: boolean; verbose?: boolean; yMin?: number; yMax?: number; json?: boolean }) => {
+    .action((file: string, opts: {
+      scaffold?: boolean;
+      verbose?: boolean;
+      mode?: string;
+      view?: string;
+      style?: string;
+      yMin?: number;
+      yMax?: number;
+      json?: boolean;
+    }) => {
       const outputOpts: OutputOptions = { json: opts.json };
+      const mode = (opts.mode ?? "solid") as OrthoMode;
+      const view = (opts.view ?? "all") as OrthoView;
+      const style = (opts.style ?? "raw") as OrthoCoordStyle;
+      if (!["solid", "coord"].includes(mode)) {
+        printError(`Invalid mode: "${opts.mode}". Must be "solid" or "coord".`, outputOpts);
+      }
+      if (!["top", "front", "side", "all"].includes(view)) {
+        printError(`Invalid view: "${opts.view}". Must be "top", "front", "side", or "all".`, outputOpts);
+      }
+      if (!["raw", "braille"].includes(style)) {
+        printError(`Invalid style: "${opts.style}". Must be "raw" or "braille".`, outputOpts);
+      }
+      if ((opts.verbose ?? false) && mode === "coord") {
+        printError("--verbose is only available with --mode solid.", outputOpts);
+      }
+      if (mode !== "coord" && style !== "raw") {
+        printError("--style is only available with --mode coord.", outputOpts);
+      }
 
       let blueprint: Blueprint;
       try {
@@ -482,8 +558,6 @@ export function registerOrtho(program: Command): void {
 
       const showScaffold = opts.scaffold ?? false;
       const verbose = opts.verbose ?? false;
-
-      // --y-min / --y-max でブロックをフィルターして一時的な表示用 blueprint を作る
       const displayBlueprint =
         opts.yMin !== undefined || opts.yMax !== undefined
           ? {
@@ -501,11 +575,10 @@ export function registerOrtho(program: Command): void {
             }
           : blueprint;
 
-      const orthoResult = buildOrthoViews(displayBlueprint, showScaffold, verbose);
-
+      const orthoResult = buildOrthoViews(displayBlueprint, showScaffold, verbose, mode);
       if (!orthoResult) {
         printData(
-          { top: [], front: [], side: [], bounds: null },
+          { mode, view, style, top: [], front: [], side: [], bounds: null },
           outputOpts,
           () => "(empty)"
         );
@@ -513,12 +586,10 @@ export function registerOrtho(program: Command): void {
       }
 
       const { topGrid, frontGrid, sideGrid, bounds, legend } = orthoResult;
-      const text = renderOrtho(displayBlueprint, showScaffold, verbose);
-
       printData(
-        { bounds, top: topGrid, front: frontGrid, side: sideGrid, ...(legend ? { legend } : {}) },
+        { mode, view, style, bounds, top: topGrid, front: frontGrid, side: sideGrid, ...(legend ? { legend } : {}) },
         outputOpts,
-        () => text
+        () => renderOrtho(displayBlueprint, showScaffold, verbose, mode, view, style)
       );
     });
 }

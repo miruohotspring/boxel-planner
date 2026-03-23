@@ -16,11 +16,15 @@ import { registerScaffold } from "./commands/scaffold.js";
 import { registerRender } from "./commands/render.js";
 import { registerCircle } from "./commands/circle.js";
 import { registerCylinder } from "./commands/cylinder.js";
+import { registerRoof } from "./commands/roof.js";
+import { registerGable } from "./commands/gable.js";
 import { registerSpire } from "./commands/spire.js";
 import { registerSphere } from "./commands/sphere.js";
 import { registerEllipse } from "./commands/ellipse.js";
 import { registerSurface } from "./commands/surface.js";
 import { registerOrtho } from "./commands/ortho.js";
+import { registerCheck } from "./commands/check.js";
+import { registerCheckAccess } from "./commands/check-access.js";
 
 const program = new Command();
 
@@ -45,10 +49,14 @@ registerScaffold(program);
 registerRender(program);
 registerCircle(program);
 registerCylinder(program);
+registerRoof(program);
+registerGable(program);
 registerSpire(program);
 registerSphere(program);
 registerEllipse(program);
 registerSurface(program);
 registerOrtho(program);
+registerCheck(program);
+registerCheckAccess(program);
 
 program.parse();

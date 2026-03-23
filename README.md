@@ -41,6 +41,12 @@ LLM（Claude / Codex など）が操作できる CLI と、設計図をグラフ
 
 右手系 XYZ。Y が高さ方向。原点は構造物の任意の基準点。
 
+### 推奨スケール
+
+- 推奨規約として `1 block = 1 meter` とみなす
+- ファイル形式自体は抽象座標のままだが、実在建築やサイズ指定ではこの換算を使う
+- 例: 幅 50 の建物は、おおむね幅 50m 級として考える
+
 ### 推奨座標規約
 
 - `x,z`: 建物の中心を `(0,0)` に置く
@@ -179,6 +185,12 @@ boxel circle <file> --cx <n> --cz <n> --r <n> --y <n> --color <#RRGGBB> [--fille
 # 円柱を作る
 boxel cylinder <file> --cx <n> --cz <n> --r <n> --y1 <n> --y2 <n> --color <#RRGGBB> [--filled]
 
+# 張り出し付き段屋根を作る
+boxel roof <file> --x1 <n> --z1 <n> --x2 <n> --z2 <n> --y <n> --layers <n> --color <#RRGGBB>
+
+# 中央が盛り上がる破風を作る
+boxel gable <file> --face <north|south|east|west> --center <n> --base <n> --y <n> --width <n> --height <n> --depth <n> --color <#RRGGBB>
+
 # 尖塔を段積みで作る
 boxel spire <file> --cx <n> --cz <n> --y <n> --radii <4,3,2,1> --color <#RRGGBB> [--cap-color <#RRGGBB>]
 
@@ -197,6 +209,24 @@ boxel surface <file> --type <torus|paraboloid|wave|gaussian|saddle> --color <#RR
 ```bash
 # 断面図をテキストで出力（LLM 確認用）
 boxel render <file> --y <n>
+
+# TOP/FRONT/SIDE の正射影をまとめて確認
+boxel ortho <file>
+
+# 可視面の座標値で穴・段差を確認
+boxel ortho <file> --mode coord
+
+# 必要な面だけ切り出す
+boxel ortho <file> --mode coord --view front
+
+# 座標値を点字ヒートマップで見る
+boxel ortho <file> --mode coord --style braille --view top
+
+# サイズ制約を検証（例: 幅50m級に収まるか）
+boxel check <file> --max-x 50 --max-y 35 --max-z 50
+
+# 門から内部まで通れるか確認
+boxel check-access <file> --from 0,4,-5 --to 0,8,10
 
 # 例:
 # Y=0 断面:

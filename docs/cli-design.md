@@ -199,6 +199,34 @@ Y=0 (structure: 9, scaffold: 0)
      012
 ```
 
+#### `boxel ortho <file>`
+
+TOP / FRONT / SIDE の正射影を横並びで出力する。実在建築の立面確認に使う。
+
+```bash
+boxel ortho shrine.boxel.json
+boxel ortho shrine.boxel.json --mode coord
+boxel ortho shrine.boxel.json --mode coord --style braille --view top
+```
+
+`--mode coord` では、各セルに可視面の座標値を表示する。`--style braille` を付けると 9 段階の点字ヒートマップとして描画する。
+
+#### `boxel check <file> --max-x <n> [--max-y <n>] [--max-z <n>]`
+
+指定したサイズ制約を満たすかを検証する。失敗時は終了コード 1 を返す。
+
+```bash
+boxel check castle.boxel.json --max-x 50 --max-y 35 --max-z 50
+```
+
+#### `boxel check-access <file> --from <x,y,z> --to <x,y,z>`
+
+2点間に空間的な到達経路があるかを検証する。失敗時は終了コード 1 を返す。
+
+```bash
+boxel check-access castle.boxel.json --from 0,4,-5 --to 0,8,10
+```
+
 ---
 
 ## 設計方針

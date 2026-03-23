@@ -209,7 +209,7 @@ describe("buildOrthoViews --verbose", () => {
     expect(result).not.toBeNull();
     // topGrid: z=0 の行 → x=0 が 'a'、x=1 が 'b'（または vice versa、登録順）
     expect(result!.topGrid[0]).not.toContain("■");
-    expect(result!.topGrid[0]!.some((c) => /[a-z]/.test(c))).toBe(true);
+    expect(result!.topGrid[0]!.some((c) => typeof c === "string" && /[a-z]/.test(c))).toBe(true);
   });
 
   it("verbose なしのとき legend は undefined", () => {
@@ -284,6 +284,56 @@ describe("buildOrthoViews --verbose", () => {
     // colorInfo: #FF0000 → 'a'、#0000FF → 'b'
     // SIDE (z=0,y=0) の代表は X=0 の #FF0000 → 'a'
     expect(result!.sideGrid[0]![0]).toBe("a");
+  });
+});
+
+describe("buildOrthoViews --mode coord", () => {
+  it("TOP では可視面の y 座標を返す", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 0, y: 1, z: 0, color: "#FF0000" },
+        { x: 0, y: 4, z: 0, color: "#00FF00" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, false, "coord");
+    expect(result).not.toBeNull();
+    expect(result!.topGrid).toEqual([[4]]);
+  });
+
+  it("FRONT では手前に見える z 座標を返す", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 0, y: 0, z: 5, color: "#FF0000" },
+        { x: 0, y: 0, z: 2, color: "#00FF00" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, false, "coord");
+    expect(result).not.toBeNull();
+    expect(result!.frontGrid[0]).toEqual([2]);
+  });
+
+  it("SIDE では手前に見える x 座標を返す", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 3, y: 0, z: 0, color: "#FF0000" },
+        { x: -1, y: 0, z: 0, color: "#00FF00" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, false, "coord");
+    expect(result).not.toBeNull();
+    expect(result!.sideGrid[0]).toEqual([-1]);
+  });
+
+  it("ブロックのない列は null になる", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 0, y: 2, z: 0, color: "#FF0000" },
+        { x: 2, y: 4, z: 0, color: "#FF0000" },
+      ],
+    });
+    const result = buildOrthoViews(bp, false, false, "coord");
+    expect(result).not.toBeNull();
+    expect(result!.topGrid[0]).toEqual([2, null, 4]);
   });
 });
 
@@ -397,5 +447,60 @@ describe("renderOrtho", () => {
     expect(output).toContain("(scaffold)");
     expect(output).toContain("#888888");
     expect(output).toContain("#FF8C00");
+  });
+
+  it("--mode coord では数値が出力される", () => {
+    const bp = makeBlueprint({
+      structure: [{ x: 0, y: 4, z: 0, color: "#FF0000" }],
+    });
+    const output = renderOrtho(bp, false, false, "coord");
+    expect(output).toContain("4");
+    expect(output).toContain("visible Y");
+  });
+
+  it("--mode coord --style braille では点字ヒートマップになる", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 0, y: 1, z: 0, color: "#FF0000" },
+        { x: 1, y: 4, z: 0, color: "#FF0000" },
+      ],
+    });
+    const output = renderOrtho(bp, false, false, "coord", "top", "braille");
+    expect(output).toContain("braille");
+    expect(output).toContain("Braille scale:");
+    expect(/[⠁⠃⠇⠧⠷⠿⣷⣿]/u.test(output)).toBe(true);
+    expect(output).not.toContain(" 4");
+  });
+
+  it("braille の FRONT は手前ほど濃くなる", () => {
+    const bp = makeBlueprint({
+      structure: [
+        { x: 0, y: 0, z: 0, color: "#FF0000" },
+        { x: 1, y: 0, z: 4, color: "#FF0000" },
+      ],
+    });
+    const output = renderOrtho(bp, false, false, "coord", "front", "braille");
+    expect(output).toContain("⣿");
+    expect(output).toContain("⠁");
+  });
+
+  it("--view top では TOP のみ出力する", () => {
+    const bp = makeBlueprint({
+      structure: [{ x: 0, y: 0, z: 0, color: "#FF0000" }],
+    });
+    const output = renderOrtho(bp, false, false, "solid", "top");
+    expect(output).toContain("TOP");
+    expect(output).not.toContain("FRONT");
+    expect(output).not.toContain("SIDE");
+  });
+
+  it("--view front では FRONT のみ出力する", () => {
+    const bp = makeBlueprint({
+      structure: [{ x: 0, y: 0, z: 0, color: "#FF0000" }],
+    });
+    const output = renderOrtho(bp, false, false, "coord", "front");
+    expect(output).toContain("FRONT");
+    expect(output).not.toContain("TOP");
+    expect(output).not.toContain("SIDE");
   });
 });
