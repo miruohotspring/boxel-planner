@@ -8,35 +8,31 @@ import {
 import { readBlueprint, writeBlueprint } from "../lib/file.js";
 import { printData, printError, type OutputOptions } from "../lib/output.js";
 
-export function registerFill(program: Command): void {
+export function registerSphere(program: Command): void {
   program
-    .command("fill <file>")
-    .description("指定範囲をブロックで埋める")
-    .requiredOption("--x1 <n>", "開始X座標", Number)
-    .requiredOption("--y1 <n>", "開始Y座標", Number)
-    .requiredOption("--z1 <n>", "開始Z座標", Number)
-    .requiredOption("--x2 <n>", "終了X座標", Number)
-    .requiredOption("--y2 <n>", "終了Y座標", Number)
-    .requiredOption("--z2 <n>", "終了Z座標", Number)
+    .command("sphere <file>")
+    .description("球体またはドームを生成する")
+    .requiredOption("--cx <n>", "中心X座標", Number)
+    .requiredOption("--cy <n>", "中心Y座標", Number)
+    .requiredOption("--cz <n>", "中心Z座標", Number)
+    .requiredOption("--r <n>", "半径（1以上の整数）", Number)
     .requiredOption("--color <#RRGGBB>", "ブロックカラー (#RRGGBB)")
-    .option("--hollow", "外周のみ埋める（中空）")
+    .option("--half <half>", "球の半分: top / bottom / full（デフォルト: full）", "full")
+    .option("--filled", "塗りつぶし（デフォルト: 中空シェル）")
     .option("--layer <layer>", "対象レイヤー (structure または scaffold)", "structure")
-    .option("--dry-run", "ファイルを変更せず、追加されるブロック数を出力する")
     .option("--json", "JSON形式で結果を出力する")
     .action(
       (
         file: string,
         opts: {
-          x1: number;
-          y1: number;
-          z1: number;
-          x2: number;
-          y2: number;
-          z2: number;
+          cx: number;
+          cy: number;
+          cz: number;
+          r: number;
           color: string;
-          hollow?: boolean;
+          half: string;
+          filled?: boolean;
           layer: string;
-          dryRun?: boolean;
           json?: boolean;
         }
       ) => {
@@ -50,6 +46,14 @@ export function registerFill(program: Command): void {
           printError(`Invalid layer: "${opts.layer}". Must be "structure" or "scaffold".`, outputOpts);
         }
 
+        if (opts.r < 1) {
+          printError(`Radius must be >= 1. Got: ${opts.r}`, outputOpts);
+        }
+
+        if (opts.half !== "top" && opts.half !== "bottom" && opts.half !== "full") {
+          printError(`Invalid --half value: "${opts.half}". Must be "top", "bottom", or "full".`, outputOpts);
+        }
+
         let blueprint: Blueprint;
         try {
           blueprint = readBlueprint(file);
@@ -57,33 +61,42 @@ export function registerFill(program: Command): void {
           printError(e instanceof Error ? e.message : String(e), outputOpts);
         }
 
-        const minX = Math.min(opts.x1, opts.x2);
-        const maxX = Math.max(opts.x1, opts.x2);
-        const minY = Math.min(opts.y1, opts.y2);
-        const maxY = Math.max(opts.y1, opts.y2);
-        const minZ = Math.min(opts.z1, opts.z2);
-        const maxZ = Math.max(opts.z1, opts.z2);
-
         const layer = opts.layer as "structure" | "scaffold";
         const existingBlocks = [...blueprint[layer]];
-        // 位置マップを構築（既存ブロックを上書き可能にする）
         const posMap = new Map<string, Block>();
         for (const b of existingBlocks) {
           posMap.set(positionKey(b), b);
         }
 
+        const cx = opts.cx;
+        const cy = opts.cy;
+        const cz = opts.cz;
+        const r = opts.r;
+
         let added = 0;
-        for (let x = minX; x <= maxX; x++) {
-          for (let y = minY; y <= maxY; y++) {
-            for (let z = minZ; z <= maxZ; z++) {
-              if (opts.hollow) {
-                // 外周判定: 少なくとも1軸が境界上
-                const onBorder =
-                  x === minX || x === maxX ||
-                  y === minY || y === maxY ||
-                  z === minZ || z === maxZ;
-                if (!onBorder) continue;
+        for (let x = cx - r; x <= cx + r; x++) {
+          for (let y = cy - r; y <= cy + r; y++) {
+            for (let z = cz - r; z <= cz + r; z++) {
+              // --half フィルター
+              if (opts.half === "top" && y < cy) continue;
+              if (opts.half === "bottom" && y > cy) continue;
+
+              const dx = x - cx;
+              const dy = y - cy;
+              const dz = z - cz;
+              const dist2 = dx * dx + dy * dy + dz * dz;
+
+              let place: boolean;
+              if (opts.filled) {
+                place = dist2 <= r * r;
+              } else {
+                const rInner = r - 0.5;
+                const rOuter = r + 0.5;
+                place = dist2 >= rInner * rInner && dist2 <= rOuter * rOuter;
               }
+
+              if (!place) continue;
+
               const block: Block = { x, y, z, color: opts.color };
               const key = positionKey(block);
               if (!posMap.has(key)) added++;
@@ -92,29 +105,7 @@ export function registerFill(program: Command): void {
           }
         }
 
-        const hollowLabel = opts.hollow ? " [hollow]" : "";
-        const rangeLabel = `(${minX},${minY},${minZ})→(${maxX},${maxY},${maxZ})`;
-
-        if (opts.dryRun) {
-          // dry-run: ファイルへの書き込みをしない
-          printData(
-            {
-              ok: true,
-              dryRun: true,
-              count: added,
-              layer,
-              range: { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } },
-              hollow: opts.hollow ?? false,
-            },
-            outputOpts,
-            () =>
-              `[dry-run] Would add ${added} block(s) to ${layer} ${rangeLabel}${hollowLabel}.`
-          );
-          return;
-        }
-
         const newBlocks = Array.from(posMap.values());
-
         const updatedLayer = layer === "structure"
           ? { structure: newBlocks, scaffold: blueprint.scaffold }
           : { structure: blueprint.structure, scaffold: newBlocks };
@@ -134,16 +125,19 @@ export function registerFill(program: Command): void {
           printError(e instanceof Error ? e.message : String(e), outputOpts);
         }
 
+        const halfLabel = opts.half !== "full" ? ` [${opts.half} half]` : "";
         printData(
           {
             layer,
-            range: { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } },
-            hollow: opts.hollow ?? false,
             added,
+            radius: r,
+            center: { x: cx, y: cy, z: cz },
+            half: opts.half,
+            filled: opts.filled ?? false,
           },
           outputOpts,
           () =>
-            `Filled ${added} block(s) in ${layer} from (${minX},${minY},${minZ}) to (${maxX},${maxY},${maxZ})${opts.hollow ? " [hollow]" : ""}.`
+            `Added sphere: ${added} block(s), radius=${r}, center=(${cx},${cy},${cz})${halfLabel}.`
         );
       }
     );

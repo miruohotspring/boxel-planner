@@ -154,6 +154,65 @@ describe("remove command logic", () => {
     const filtered = blocks.filter((b) => positionKey(b) !== key);
     expect(filtered).toHaveLength(1);
   });
+
+  it("範囲削除: 複数ブロックを一括削除できる", () => {
+    const fp = tmpFile("remove-range.boxel.json");
+    // 3x1x3 = 9 ブロックを配置
+    const blocks: Block[] = [];
+    for (let x = 0; x <= 2; x++) {
+      for (let z = 0; z <= 2; z++) {
+        blocks.push({ x, y: 0, z, color: "#888888" });
+      }
+    }
+    const bp = makeBlueprint({ structure: blocks });
+    writeFixture(fp, bp);
+
+    // x:0-1, z:0-1 の 2x2=4 ブロックを削除
+    const minX = 0, maxX = 1, minY = 0, maxY = 0, minZ = 0, maxZ = 1;
+    const inRange = (bx: number, by: number, bz: number): boolean =>
+      bx >= minX && bx <= maxX &&
+      by >= minY && by <= maxY &&
+      bz >= minZ && bz <= maxZ;
+
+    const read = readFixture(fp);
+    const before = read.structure.length;
+    const filtered = read.structure.filter((b) => !inRange(b.x, b.y, b.z));
+    const removedCount = before - filtered.length;
+
+    expect(removedCount).toBe(4);
+    expect(filtered).toHaveLength(5);
+  });
+
+  it("範囲削除: ファイルに書き込まれた結果が正しい", () => {
+    const fp = tmpFile("remove-range-write.boxel.json");
+    // 2x1x2 = 4 ブロックを配置
+    const blocks: Block[] = [
+      { x: 0, y: 0, z: 0, color: "#FF0000" },
+      { x: 1, y: 0, z: 0, color: "#FF0000" },
+      { x: 0, y: 0, z: 1, color: "#FF0000" },
+      { x: 1, y: 0, z: 1, color: "#FF0000" },
+      { x: 5, y: 0, z: 5, color: "#00FF00" }, // 範囲外
+    ];
+    const bp = makeBlueprint({ structure: blocks });
+    writeFixture(fp, bp);
+
+    // x:0-1, y:0-0, z:0-1 の範囲を削除
+    const minX = 0, maxX = 1, minY = 0, maxY = 0, minZ = 0, maxZ = 1;
+    const inRange = (bx: number, by: number, bz: number): boolean =>
+      bx >= minX && bx <= maxX &&
+      by >= minY && by <= maxY &&
+      bz >= minZ && bz <= maxZ;
+
+    const read = readFixture(fp);
+    const newStructure = read.structure.filter((b) => !inRange(b.x, b.y, b.z));
+    const newBp = { ...read, structure: newStructure };
+    writeBlueprint(fp, newBp);
+
+    const result = readFixture(fp);
+    // 範囲外の1ブロックだけ残る
+    expect(result.structure).toHaveLength(1);
+    expect(result.structure[0]?.color).toBe("#00FF00");
+  });
 });
 
 // ============================================================
@@ -210,6 +269,69 @@ describe("fill command logic", () => {
     }
     // 3x3x3 = 27 total, 1 inner = 26 border
     expect(posMap.size).toBe(26);
+  });
+
+  it("dry-run: ファイルが変更されない", () => {
+    const fp = tmpFile("fill-dryrun.boxel.json");
+    const bp = makeBlueprint();
+    writeFixture(fp, bp);
+
+    // dry-run ロジックを再現: fill の計算のみ行い writeBlueprint を呼ばない
+    const minX = 0, maxX = 9, minY = 0, maxY = 4, minZ = 0, maxZ = 9;
+    const existingBlocks = [...bp.structure];
+    const posMap = new Map<string, Block>();
+    for (const b of existingBlocks) {
+      posMap.set(positionKey(b), b);
+    }
+
+    let added = 0;
+    const hollow = true;
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        for (let z = minZ; z <= maxZ; z++) {
+          if (hollow) {
+            const onBorder =
+              x === minX || x === maxX ||
+              y === minY || y === maxY ||
+              z === minZ || z === maxZ;
+            if (!onBorder) continue;
+          }
+          const block: Block = { x, y, z, color: "#888888" };
+          const key = positionKey(block);
+          if (!posMap.has(key)) added++;
+          // dry-run なので posMap への set はするが writeBlueprint は呼ばない
+        }
+      }
+    }
+
+    // ファイルは変更されていないこと
+    const result = readFixture(fp);
+    expect(result.structure).toHaveLength(0);
+
+    // 10x5x10 の hollow 外周ブロック数を確認
+    // 10x10x5 - 8x8x3 = 500 - 192 = 308
+    expect(added).toBe(308);
+  });
+
+  it("dry-run: hollow の count が正しい（10x5x10）", () => {
+    // 10x5x10 hollow の外周ブロック数: 全体 - 内部
+    // 全体: 10 * 5 * 10 = 500
+    // 内部: (10-2) * (5-2) * (10-2) = 8 * 3 * 8 = 192
+    // 外周: 500 - 192 = 308
+    const minX = 0, maxX = 9, minY = 0, maxY = 4, minZ = 0, maxZ = 9;
+    let count = 0;
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        for (let z = minZ; z <= maxZ; z++) {
+          const onBorder =
+            x === minX || x === maxX ||
+            y === minY || y === maxY ||
+            z === minZ || z === maxZ;
+          if (onBorder) count++;
+        }
+      }
+    }
+    expect(count).toBe(308);
   });
 });
 

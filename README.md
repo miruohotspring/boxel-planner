@@ -206,6 +206,70 @@ boxel info tower.boxel.json --json
 
 ---
 
+## Getting Started
+
+### 必要環境
+
+- Node.js 18 以上
+- npm 9 以上
+
+### インストール
+
+```bash
+git clone https://github.com/miruohotspring/boxel-planner.git
+cd boxel-planner
+npm install
+```
+
+### ビルド（CLI）
+
+```bash
+npm run build
+```
+
+schema → cli の順に自動でビルドされます。
+
+### CLI を使う
+
+```bash
+# 新規設計図を作成
+node packages/cli/dist/index.js init "My House" --out my-house.boxel.json
+
+# 5x5x5 の中空の家を作る
+node packages/cli/dist/index.js fill my-house.boxel.json \
+  --x1 0 --y1 0 --z1 0 --x2 4 --y2 4 --z2 4 \
+  --color "#8B4513" --hollow
+
+# 断面を確認（LLM はこれで現状を把握する）
+node packages/cli/dist/index.js render my-house.boxel.json --y 2
+
+# 足場を自動生成
+node packages/cli/dist/index.js scaffold generate my-house.boxel.json
+```
+
+`boxel` コマンドとしてパスに通したい場合：
+
+```bash
+cd packages/cli && npm link
+boxel --help
+```
+
+### Web UI を起動する
+
+```bash
+npm run dev:web
+# → http://localhost:5173
+```
+
+ブラウザで `.boxel.json` をドラッグ＆ドロップして読み込めます。
+
+### LLM（Claude / Codex）と使う
+
+`docs/llm-guide.md` を LLM のシステムプロンプトまたは会話の冒頭に渡してください。
+ガイドに従って LLM が `boxel` コマンドを組み合わせて設計図を作成します。
+
+---
+
 ## 技術スタック（予定）
 
 | レイヤー | 技術 |
@@ -237,11 +301,11 @@ boxel-planner/
 
 ## ロードマップ
 
-- [ ] `packages/schema` : ファイル形式定義・バリデーター
-- [ ] `packages/cli` : 基本コマンド実装
-- [ ] `packages/cli` : 足場自動生成
-- [ ] `packages/web` : 3D ビュー
-- [ ] `packages/web` : 2D 断面ビュー
-- [ ] `packages/web` : 2D 編集機能
-- [ ] `packages/web` : カラーパレット
-- [ ] ドキュメント整備
+- [x] `packages/schema` : ファイル形式定義・バリデーター
+- [x] `packages/cli` : 基本コマンド実装
+- [x] `packages/cli` : 足場自動生成
+- [x] `packages/web` : 3D ビュー
+- [x] `packages/web` : 2D 断面ビュー
+- [x] `packages/web` : 2D 編集機能
+- [x] `packages/web` : カラーパレット
+- [x] ドキュメント整備（`docs/llm-guide.md`）

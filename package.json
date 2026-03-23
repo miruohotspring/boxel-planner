@@ -4,5 +4,11 @@
   "version": "0.0.0",
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "scripts": {
+    "build": "npm run build -w @boxel-planner/schema && npm run build -w @boxel-planner/cli",
+    "setup": "npm run build && cd packages/cli && npm link",
+    "dev:web": "npm run dev -w @boxel-planner/web",
+    "test": "npm run test -w @boxel-planner/schema && npm run test -w @boxel-planner/cli"
+  }
 }

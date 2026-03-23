@@ -10,6 +10,10 @@ import { registerSlice } from "./commands/slice.js";
 import { registerFill } from "./commands/fill.js";
 import { registerScaffold } from "./commands/scaffold.js";
 import { registerRender } from "./commands/render.js";
+import { registerCircle } from "./commands/circle.js";
+import { registerCylinder } from "./commands/cylinder.js";
+import { registerSphere } from "./commands/sphere.js";
+import { registerEllipse } from "./commands/ellipse.js";
 
 const program = new Command();
 
@@ -28,5 +32,9 @@ registerSlice(program);
 registerFill(program);
 registerScaffold(program);
 registerRender(program);
+registerCircle(program);
+registerCylinder(program);
+registerSphere(program);
+registerEllipse(program);
 
 program.parse();
