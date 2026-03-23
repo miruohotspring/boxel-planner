@@ -10,6 +10,7 @@
 
 - 建築タイプから考える: [by-building-type.md](./by-building-type.md)
 - 構造パターンから考える: [by-structure.md](./by-structure.md)
+- 具体例で流れを見る: [case-study-lighthouse.md](./case-study-lighthouse.md)
 - プリミティブを逆引きする: [primitives.md](./primitives.md)
 - 部品合成・対称配置を見る: [composition.md](./composition.md)
 - 失敗パターンだけ見る: [troubleshooting.md](./troubleshooting.md)
