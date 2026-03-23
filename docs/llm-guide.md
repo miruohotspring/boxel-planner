@@ -6,6 +6,7 @@
 
 - 建築タイプから入る: [docs/llm-guide/by-building-type.md](./llm-guide/by-building-type.md)
 - 構造パターンから入る: [docs/llm-guide/by-structure.md](./llm-guide/by-structure.md)
+- 人間スケールと開口設計: [docs/llm-guide/human-scale-and-openings.md](./llm-guide/human-scale-and-openings.md)
 - プリミティブ早見表: [docs/llm-guide/primitives.md](./llm-guide/primitives.md)
 - 部品合成と対称配置: [docs/llm-guide/composition.md](./llm-guide/composition.md)
 - 失敗時の見直し: [docs/llm-guide/troubleshooting.md](./llm-guide/troubleshooting.md)
@@ -109,6 +110,19 @@ boxel <command>
 - ただし、実在建築の再現や「50x50x50 くらい」のような指示は、基本的に `50m 級` と読んで構いません
 - 例: 高さ 12m の門楼を作りたいなら、まず `y=0..11` 前後で考えます
 - 壁厚は原則 `1 block`、重厚な石造表現でも `2 block` までを基本としてください。`3 block` 以上は意図が明確な場合に限ります
+
+### 人間スケール規約【重要】
+
+人が使う建築では、見た目より先に次を守ってください。
+
+- 通行可能な段差は `1 block = 1 meter` まで
+- `2 block` 以上の段差は通行不可能として扱う
+- 出入口の開口高さは `2 block = 2 meter`
+- 内部の実行動空間の高さは最低 `3 block = 3 meter`
+- 原則は `ドア 2m / 天井 3m 以上`
+
+特に駅舎、門、ホール、塔の入口では、床高さと開口高さを最初に固定してください。
+入口まわりの段差や意図しない抜け穴は、見た目が良くても設計ミスとして扱います。
 
 ### 推奨座標規約【重要】
 
@@ -379,6 +393,10 @@ Distance: 19
 ```
 
 足場も障害物として扱いたい場合は `--include-scaffold` を付けます。
+
+注意:
+- `check-access` は空セル同士の BFS なので、頭上クリアランスや「人が立てる高さ」は検証しません
+- 人間スケールの確認には `render --y 1`, `render --y 2`, `render --y 3` と `ortho --mode coord` を併用してください
 
 Y 座標でフィルターしたいときは `--y-min` を使います（床だけで全面 ■ になる場合などに有効）:
 

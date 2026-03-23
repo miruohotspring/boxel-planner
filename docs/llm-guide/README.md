@@ -5,11 +5,13 @@
 サイズ感の基準は、推奨規約として `1 block = 1 meter` です。
 壁厚は原則 `1 block = 1 meter`、分厚く見せたい場合でも `2 block` までを推奨します。
 色も形状と同じくらい重要な情報です。指定がない場合は、まず用途に合った `palette` を `10〜30` 色程度で定義してから作り始めてください。
+人間が使う建築では、通行可能な段差は `1m` まで、開口高さは `2m`、内部の実行動空間は最低 `3m` を原則にしてください。
 
 形状確認では `boxel ortho` が立面把握に有効です。`boxel ortho --mode coord` を使うと可視面の座標値で穴や段差を見つけやすくなります。`--crop structure --center --grid 5` を併用すると全体の読みやすさが上がります。サイズ制約の確認には `boxel check --max-x ... --max-y ... --max-z ...`、通り抜け確認には `boxel check-access --from ... --to ...`、推奨規約の確認には `boxel validate --lint` を使えます。
 
 - 建築タイプから考える: [by-building-type.md](./by-building-type.md)
 - 構造パターンから考える: [by-structure.md](./by-structure.md)
+- 人間スケールと開口を見る: [human-scale-and-openings.md](./human-scale-and-openings.md)
 - 具体例で流れを見る: [case-study-lighthouse.md](./case-study-lighthouse.md)
 - プリミティブを逆引きする: [primitives.md](./primitives.md)
 - 部品合成・対称配置を見る: [composition.md](./composition.md)
